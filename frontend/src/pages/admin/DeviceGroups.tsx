@@ -315,11 +315,11 @@ export default function AdminDeviceGroups() {
           <>
             <p>请按机器的架构下载合适的包：</p>
             {archs.map((a) => (
-              <div key={a}><a href={`/download/nodeclient_${a}.zip`}>nodeclient_{a}.zip</a></div>
+              <div key={a}><a href={`/download/nodeclient_${a}.tar.gz`}>nodeclient_{a}.tar.gz</a></div>
             ))}
-            <p style={{ marginTop: 16 }}>把包传到节点机器上（例如用 SFTP），解压后在解压出的目录里以 root 运行：</p>
-            <Typography.Paragraph copyable={{ text: `bash install.sh -panel ${origin} -token ${offline.token}` }}>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>bash install.sh -panel {origin} -token {offline.token}</pre>
+            <p style={{ marginTop: 16 }}>把包传到节点机器上（例如用 SFTP），然后以 root 运行（把文件名换成你下载的那个）：</p>
+            <Typography.Paragraph copyable={{ text: `tar xzf nodeclient_linux_amd64.tar.gz && bash nodeclient_pkg/install.sh -panel ${origin} -token ${offline.token}` }}>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>tar xzf nodeclient_linux_amd64.tar.gz && bash nodeclient_pkg/install.sh -panel {origin} -token {offline.token}</pre>
             </Typography.Paragraph>
           </>
         )}

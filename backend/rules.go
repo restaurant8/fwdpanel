@@ -264,7 +264,9 @@ func handleCreateRule(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	db.Create(&r)
+	if dbFail(c, db.Create(&r).Error) {
+		return
+	}
 	nudgeAll()
 	c.JSON(200, r)
 }
@@ -297,7 +299,9 @@ func handleUpdateRule(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	db.Save(r)
+	if dbFail(c, db.Save(r).Error) {
+		return
+	}
 	clearRuleStatus(r.ID)
 	nudgeAll()
 	c.JSON(200, r)
@@ -345,7 +349,10 @@ func handleBatchRules(c *gin.Context) {
 			errs = append(errs, fmt.Sprintf("第 %d 条「%s」: %s", i+1, rr.Name, err.Error()))
 			continue
 		}
-		db.Create(&r)
+		if err := db.Create(&r).Error; err != nil {
+			errs = append(errs, "保存失败: "+err.Error())
+			continue
+		}
 		created++
 	}
 	for i, line := range strings.Split(req.Lines, "\n") {
@@ -378,7 +385,10 @@ func handleBatchRules(c *gin.Context) {
 			bad(err.Error())
 			continue
 		}
-		db.Create(&r)
+		if err := db.Create(&r).Error; err != nil {
+			errs = append(errs, "保存失败: "+err.Error())
+			continue
+		}
 		created++
 	}
 	nudgeAll()
@@ -442,7 +452,10 @@ func handleBatchAction(c *gin.Context) {
 			errs = append(errs, fmt.Sprintf("规则「%s」: %s", r.Name, err.Error()))
 			continue
 		}
-		db.Save(&r)
+		if err := db.Save(&r).Error; err != nil {
+			errs = append(errs, "保存失败: "+err.Error())
+			continue
+		}
 		clearRuleStatus(r.ID)
 		done++
 	}
@@ -478,7 +491,9 @@ func handleSaveRuleGroup(c *gin.Context) {
 		return
 	}
 	g.Name = req.Name
-	db.Save(&g)
+	if dbFail(c, db.Save(&g).Error) {
+		return
+	}
 	c.JSON(200, g)
 }
 

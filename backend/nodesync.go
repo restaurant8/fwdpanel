@@ -319,11 +319,11 @@ func recordTraffic(g *DeviceGroup, traffic map[uint]int64) {
 				UpdateColumn("traffic_used", gorm.Expr("traffic_used + ?", d))
 			db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "date"}, {Name: "user_id"}},
-				DoUpdates: clause.Assignments(map[string]any{"bytes": gorm.Expr("bytes + ?", d)}),
+				DoUpdates: clause.Assignments(map[string]any{"bytes": gorm.Expr("traffic_dailies.bytes + ?", d)}),
 			}).Create(&TrafficDaily{Date: today, UserID: r.UserID, Bytes: d})
 			db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "date"}, {Name: "group_id"}},
-				DoUpdates: clause.Assignments(map[string]any{"bytes": gorm.Expr("bytes + ?", d)}),
+				DoUpdates: clause.Assignments(map[string]any{"bytes": gorm.Expr("group_traffic_dailies.bytes + ?", d)}),
 			}).Create(&GroupTrafficDaily{Date: today, GroupID: g.ID, Bytes: d})
 		}
 	}

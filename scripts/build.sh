@@ -7,6 +7,10 @@ ROOT="$PWD"
 [ -d .toolchain/go ] && export PATH="$ROOT/.toolchain/go/bin:$PATH" GOPATH="$ROOT/.toolchain/gopath" GOFLAGS=-modcacherw
 [ -d .toolchain/node ] && export PATH="$ROOT/.toolchain/node/bin:$PATH"
 export CGO_ENABLED=0
+# 在 macOS 上打包时不要带上扩展属性，否则在 Linux 上解压会有一堆警告
+export COPYFILE_DISABLE=1
+TAR="tar"
+tar --version 2>/dev/null | grep -q bsdtar && TAR="tar --no-xattrs --no-mac-metadata"
 LD="-s -w"
 
 echo "== 前端"
@@ -19,9 +23,10 @@ cp scripts/node-install.sh backend/nodedist/install.sh
 build_node() { # 名称 GOARCH GOAMD64
   local out="backend/nodedist/nodeclient_$1" tmp
   (cd nodeclient && GOOS=linux GOARCH=$2 GOAMD64=$3 go build -trimpath -ldflags "$LD -X main.buildArch=$1" -o "../$out" .)
-  tmp="$(mktemp -d)"
-  cp "$out" "$tmp/nodeclient" && cp scripts/node-install.sh "$tmp/install.sh"
-  (cd "$tmp" && zip -q -X "$ROOT/$out.zip" nodeclient install.sh)
+  # 离线部署包用 tar.gz：很多精简系统没有 unzip，但一定有 tar
+  tmp="$(mktemp -d)" && mkdir "$tmp/nodeclient_pkg"
+  cp "$out" "$tmp/nodeclient_pkg/nodeclient" && cp scripts/node-install.sh "$tmp/nodeclient_pkg/install.sh"
+  $TAR -czf "$out.tar.gz" -C "$tmp" nodeclient_pkg
   rm -rf "$tmp"
 }
 build_node linux_amd64 amd64 v1
@@ -36,7 +41,7 @@ for arch in amd64 arm64; do
   tmp="$(mktemp -d)" && mkdir "$tmp/fwdpanel"
   (cd backend && GOOS=linux GOARCH=$arch go build -trimpath -ldflags "$LD" -o "$tmp/fwdpanel/panel" .)
   cp scripts/panel-install.sh "$tmp/fwdpanel/install.sh"
-  tar -czf "release/fwdpanel_linux_$arch.tar.gz" -C "$tmp" fwdpanel
+  $TAR -czf "release/fwdpanel_linux_$arch.tar.gz" -C "$tmp" fwdpanel
   rm -rf "$tmp"
 done
 

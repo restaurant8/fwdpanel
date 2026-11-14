@@ -71,12 +71,18 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - 隧道的流量伪装选项（伪造 HTTP 头、伪装 TLS 指纹）：有意不实现
 - 限速和 IP/连接数限制不跨节点汇总
 
-## 没有实测过的部分
+## 测试情况
 
-以下代码已写好并能编译，但开发环境里没有条件验证：
-- MySQL / PostgreSQL（只测过 SQLite，包括 SQLite 之间的 `-copy-database`）
-- 面板和节点端的安装脚本、自动 HTTPS（`-domain`）
-- Linux 上的探针采集、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、远程升级的"下载并重启"（升级的下发和失败处理测过）
+在一台 Ubuntu 24.04 (x86_64) 服务器上实测过：
+- 面板安装脚本（安装、重复运行升级）、节点在线安装（自动选择 amd64v3）、离线部署包、卸载、开机自启
+- tls / ws 隧道、直接转发、UDP、TLS 入站、诊断、在线终端、探针数据
+- 远程升级（下载后原地重启，转发不中断）、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、`BIND_INBOUND`
+- SQLite、MariaDB 10.11、PostgreSQL 16，以及三者之间的 `-copy-database`
+
+没有条件验证的：
+- 自动 HTTPS（`-domain`，需要真实域名）
+- arm64 的安装包（能编译，没有 arm 机器跑过）
+- 多台机器之间的真实跨网络转发（测试时入口和出口在同一台机器上）
 - `BIND_OUTBOUND_4/6`、`NYA_PROXY`、`HEALTH_CHECK=0`
 
 ## 部署
@@ -108,7 +114,7 @@ tar xzf fwdpanel_linux_amd64.tar.gz && cd fwdpanel && bash install.sh -domain �
 登录面板 →「设备组管理」→ 添加设备组 → 点「对接」→ 复制在线安装命令，到节点机器上以 root 运行。
 同一条命令可以在多台机器上运行，它们共用这个组的规则。
 
-- 节点机器连不上面板下载时，用「对接 → 离线部署」下载对应架构的包，传上去解压后运行里面的 `install.sh`。
+- 节点机器连不上面板下载时，用「对接 → 离线部署」下载对应架构的 `.tar.gz` 包，传上去后按弹窗里的命令解压并运行 `install.sh`。
 - 在安装命令后面可以追加节点端参数，例如 `-advertise 1.2.3.4`（出口对外地址）、`-enable-terminal`（允许在线终端）。
 - 同一台机器装多个节点：命令前加 `S=名字`，例如 `S=node2 bash <(curl ...) ...`。
 - 日志 `journalctl -fu nodeclient`，卸载 `bash /opt/nodeclient.uninstall.sh`。

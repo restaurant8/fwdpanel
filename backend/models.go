@@ -54,12 +54,12 @@ func isOutType(t string) bool { return t == GroupOut || t == GroupChain }
 type DeviceGroup struct {
 	ID          uint    `gorm:"primaryKey" json:"id"`
 	Name        string  `gorm:"size:64" json:"name"`
-	Type        string  `gorm:"size:8" json:"type"`
+	Type        string  `gorm:"size:16" json:"type"`
 	Token       string  `gorm:"uniqueIndex;size:64" json:"token"`
 	Ratio       float64 `json:"ratio"`
 	TunnelPort  int     `json:"tunnel_port"`
 	TunnelKey   string  `json:"-"`
-	TunnelProto string  `gorm:"size:8" json:"tunnel_proto"` // 出口组：tls 或 ws
+	TunnelProto string  `gorm:"size:16" json:"tunnel_proto"` // 出口组：tls_simple / ws / http
 	// AllowGroups 是允许使用该设备组的用户组 ID（逗号分隔），空表示所有用户可用
 	AllowGroups   string `json:"-"`
 	AllowGroupIDs []uint `gorm:"-" json:"allow_groups"`

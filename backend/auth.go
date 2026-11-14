@@ -17,6 +17,15 @@ func fail(c *gin.Context, code int, msg string) {
 	c.AbortWithStatusJSON(code, gin.H{"error": msg})
 }
 
+// dbFail 在写数据库出错时返回 500 并报告 true。没有它的话，写库失败会被当成成功。
+func dbFail(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	fail(c, 500, "保存失败: "+err.Error())
+	return true
+}
+
 func bearer(c *gin.Context) string {
 	return strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 }

@@ -209,7 +209,9 @@ func handleAdminUpdateUser(c *gin.Context) {
 	if req.TrafficUsed != nil && *req.TrafficUsed >= 0 {
 		u.TrafficUsed = *req.TrafficUsed
 	}
-	db.Save(&u)
+	if dbFail(c, db.Save(&u).Error) {
+		return
+	}
 	nudgeAll()
 	c.JSON(200, u)
 }
@@ -288,7 +290,9 @@ func handleAdminSaveUserGroup(c *gin.Context) {
 		g.ID = req.ID
 	}
 	g.Name = req.Name
-	db.Save(&g)
+	if dbFail(c, db.Save(&g).Error) {
+		return
+	}
 	c.JSON(200, g)
 }
 
@@ -531,7 +535,9 @@ func handleAdminGroupConfig(c *gin.Context) {
 	}
 	raw, _ := json.Marshal(cfg)
 	g.Config = string(raw)
-	db.Save(&g)
+	if dbFail(c, db.Save(&g).Error) {
+		return
+	}
 	nudgeAll()
 	c.JSON(200, g)
 }
@@ -625,7 +631,9 @@ func handleAdminCreateGroup(c *gin.Context) {
 	}
 	g := DeviceGroup{Type: req.Type, Token: randHex(20), TunnelKey: randHex(24)}
 	req.apply(&g)
-	db.Create(&g)
+	if dbFail(c, db.Create(&g).Error) {
+		return
+	}
 	c.JSON(200, g)
 }
 
@@ -646,7 +654,9 @@ func handleAdminUpdateGroup(c *gin.Context) {
 		return
 	}
 	req.apply(&g)
-	db.Save(&g)
+	if dbFail(c, db.Save(&g).Error) {
+		return
+	}
 	nudgeAll()
 	c.JSON(200, g)
 }
@@ -677,7 +687,9 @@ func handleAdminResetGroupToken(c *gin.Context) {
 		return
 	}
 	g.Token, g.TunnelKey = randHex(20), randHex(24)
-	db.Save(&g)
+	if dbFail(c, db.Save(&g).Error) {
+		return
+	}
 	kickGroup(g.ID)
 	nudgeAll()
 	c.JSON(200, g)

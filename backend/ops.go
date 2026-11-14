@@ -132,6 +132,12 @@ func cliCopyDatabase(dsn string) {
 		}
 		fmt.Printf("已复制: %s\n", s.name)
 	}
+	if dst.Dialector.Name() == "postgres" {
+		// 数据是带着原来的 ID 写进去的，PostgreSQL 的自增序号不会跟着走，要手动拨到最大值之后
+		for _, t := range []string{"users", "user_groups", "device_groups", "nodes", "rules", "rule_groups"} {
+			dst.Exec(fmt.Sprintf(`SELECT setval(pg_get_serial_sequence('%s','id'), COALESCE((SELECT MAX(id) FROM %s), 1))`, t, t))
+		}
+	}
 	fmt.Println("完成。登录会话没有复制，用户需要重新登录。")
 }
 
