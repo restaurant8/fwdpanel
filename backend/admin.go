@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -348,9 +349,8 @@ func (r *groupReq) apply(g *DeviceGroup) {
 	case GroupOut:
 		g.InLimit, g.TunnelProto, g.OfflineDrain, g.FailoverGroupID = r.InLimit, r.TunnelProto, r.OfflineDrain, r.FailoverGroupID
 		if g.TunnelPort == 0 {
-			// 界面上不填隧道端口，新建时随机分配一个；需要固定端口可在「高级编辑」里改
-			// 避开系统给出站连接临时分配的端口范围（Linux 默认 32768 起），减少端口被占用的概率
-			g.TunnelPort = 10000 + int(time.Now().UnixNano()%22000)
+			// 界面上不填隧道端口，新建时自动分配一个；需要固定端口可在「高级编辑」里改
+			g.TunnelPort = freeTunnelPort()
 		}
 	case GroupChain:
 		g.InLimit, g.Hops, g.HopIDs = r.InLimit, joinIDs(r.Hops), r.Hops
@@ -781,4 +781,20 @@ func handleAdminClean(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"deleted": deleted})
+}
+
+// freeTunnelPort 给新的出口组挑一个隧道端口：随机，避开其他设备组已经用了的，
+// 也避开系统给出站连接临时分配的端口范围（Linux 默认 32768 起）。
+func freeTunnelPort() int {
+	var used []int
+	db.Model(&DeviceGroup{}).Where("tunnel_port > 0").Pluck("tunnel_port", &used)
+	taken := map[int]bool{}
+	for _, p := range used {
+		taken[p] = true
+	}
+	for {
+		if p := 10000 + rand.IntN(22000); !taken[p] {
+			return p
+		}
+	}
 }
