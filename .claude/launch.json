@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "panel-demo", "runtimeExecutable": "bash", "runtimeArgs": ["scripts/demo.sh"], "port": 8080 }
+  ]
+}

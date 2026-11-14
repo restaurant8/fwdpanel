@@ -1,0 +1,14 @@
+.toolchain/
+bin/
+demo/
+node_modules/
+frontend/dist/
+*.db
+*.db-shm
+*.db-wal
+node_id
+release/
+backend/webdist/*
+backend/nodedist/*
+!backend/webdist/README.txt
+!backend/nodedist/README.txt

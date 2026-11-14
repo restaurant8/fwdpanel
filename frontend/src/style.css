@@ -1,0 +1,54 @@
+body {
+  margin: 0;
+  background: #f5f5f5;
+}
+body.dark {
+  background: #000;
+}
+/* 表单标签加粗、与输入框贴近，和整体风格一致 */
+.tight-form .field {
+  margin-bottom: 12px;
+}
+.tight-form .field > .label {
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tight-form .field.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tight-form .field.inline > .label {
+  margin-bottom: 0;
+  flex: none;
+}
+.info-row {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.info-row > b {
+  font-weight: 600;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.setting-row > .name {
+  flex: 1;
+  font-weight: 600;
+}
+.setting-row > .ctl {
+  flex: 1;
+}
+.quote {
+  border-left: 4px solid rgba(100, 100, 100, 0.2);
+  padding-left: 8px;
+  margin: 8px 0 16px;
+}
