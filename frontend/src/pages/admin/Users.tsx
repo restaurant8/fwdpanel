@@ -31,6 +31,7 @@ export default function AdminUsers() {
   const [adding, setAdding] = useState<string | null>(null)
   const [planOf, setPlanOf] = useState<User | null>(null)
   const [rulesOf, setRulesOf] = useState<User | null>(null)
+  const [searchAll, setSearchAll] = useState(false)
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x!, ...p }))
 
   const load = useCallback(async () => {
@@ -46,6 +47,7 @@ export default function AdminUsers() {
   }, [message])
   useEffect(() => { load() }, [load])
 
+  if (searchAll) return <Rules all onBack={() => setSearchAll(false)} />
   if (rulesOf) return <Rules ofUser={{ id: rulesOf.id, username: rulesOf.username }} onBack={() => setRulesOf(null)} />
 
   const ugLabel = (id: number) => { const g = ugs.find((x) => x.id === id); return g?.name ? `${g.name} (#${id})` : `#${id}` }
@@ -159,7 +161,7 @@ export default function AdminUsers() {
     >
       <Space size={14} wrap style={{ marginBottom: 14 }}>
         <Button icon={<UserAddOutlined />} onClick={() => setAdding('')}>添加用户</Button>
-        <Button icon={<SearchOutlined />} onClick={() => message.info('在某个用户的「管理规则」里可以搜索该用户的规则')}>搜索规则</Button>
+        <Button icon={<SearchOutlined />} onClick={() => setSearchAll(true)}>搜索规则</Button>
         <Button icon={<DeleteOutlined />} onClick={() => clean('users')}>清理无效用户</Button>
         <Button icon={<DeleteOutlined />} onClick={() => clean('rules')}>清理无效规则</Button>
         <Button icon={<SyncOutlined />} onClick={() => { setLoading(true); load() }}>刷新</Button>

@@ -50,6 +50,7 @@ func (in *ingress) apply(rules []ruleCfg) {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 	watchEgress(rules)
+	watchReverse(rules)
 	want := map[uint]*ruleCfg{}
 	for i := range rules {
 		rules[i].Proto = normProto(rules[i].Proto)

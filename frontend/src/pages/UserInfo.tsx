@@ -1,21 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App as AntApp, Button, Card, Input, Switch, Typography } from 'antd'
+import { App as AntApp, Button, Card, Input, Popconfirm, Space, Switch, Typography } from 'antd'
 import { DisconnectOutlined, LinkOutlined, LockOutlined, PlusCircleOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons'
 import { api, NamedGroup } from '../api'
 import { useAuth } from '../App'
-import { errMsg, fmtTime, fmtTraffic } from '../util'
+import { copyText, errMsg, fmtTime, fmtTraffic } from '../util'
 import { NotWired } from '../components/ui'
 
 export default function UserInfo() {
-  const { user, reload } = useAuth()
-  const { message } = AntApp.useApp()
+  const { user, site, reload } = useAuth()
+  const { message, modal } = AntApp.useApp()
   const nav = useNavigate()
   const [groupName, setGroupName] = useState('')
   const [pw, setPw] = useState({ old: '', next: '', again: '' })
+  const [egress, setEgress] = useState<{ id: number; name: string; token: string; online: number }[]>([])
+  const [egressName, setEgressName] = useState('')
+  const canEgress = site.allow_user_egress || user.admin
+  const loadEgress = () => api('GET', '/user/egress').then(setEgress).catch(() => {})
+  const egressCmd = (token: string) =>
+    `bash <(curl -fLSs ${window.location.origin}/download/install.sh) -panel ${window.location.origin} -token ${token}`
 
   useEffect(() => {
     reload().then(() => message.success('刷新用户信息成功'))
+    loadEgress()
     // 用户组名称只有管理员接口能查；普通用户显示组 ID
     if (user.admin)
       api<NamedGroup[]>('GET', '/admin/usergroups')
@@ -82,6 +89,43 @@ export default function UserInfo() {
           <Button icon={<SettingOutlined />} onClick={todo}>设置</Button>
         </div>
       </Card>
+      {(canEgress || egress.length > 0) && (
+        <Card title="自带出口（单端隧道）">
+          <div className="quote">
+            把你自己的机器对接成出口：添加后复制安装命令，到那台机器上以 root 运行。这样的出口只有你自己能用，在添加规则时可以选到，不计流量倍率。
+            出口机器需要能被入口连到；如果它在内网，请联系管理员为入口开启反向隧道。
+          </div>
+          {egress.map((g) => (
+            <div key={g.id} className="info-row">
+              <b>{g.name} (#{g.id})</b>
+              <span>{g.online ? `${g.online} 台在线` : '无设备'}</span>
+              <Button
+                icon={<LinkOutlined />}
+                onClick={() => copyText(egressCmd(g.token)).then(() => void message.success('安装命令已复制'), () => void modal.info({ title: '请手动复制安装命令', width: 640, content: <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', userSelect: 'all' }}>{egressCmd(g.token)}</pre> }))}
+              >
+                复制安装命令
+              </Button>
+              <Popconfirm
+                title={`删除出口「${g.name}」？`}
+                onConfirm={() => api('DELETE', `/user/egress/${g.id}`).then(loadEgress, (e) => message.error(errMsg(e)))}
+              >
+                <Button danger>删除</Button>
+              </Popconfirm>
+            </div>
+          ))}
+          {canEgress && (
+            <Space.Compact style={{ maxWidth: 530, width: '100%' }}>
+              <Input placeholder="出口名称" value={egressName} onChange={(e) => setEgressName(e.target.value)} maxLength={64} />
+              <Button
+                type="primary" disabled={!egressName.trim()}
+                onClick={() => api('POST', '/user/egress', { name: egressName }).then(() => { setEgressName(''); loadEgress() }, (e) => message.error(errMsg(e)))}
+              >
+                添加出口
+              </Button>
+            </Space.Compact>
+          )}
+        </Card>
+      )}
       <Card title="账户设置">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div>

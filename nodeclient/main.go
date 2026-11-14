@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
@@ -34,6 +34,9 @@ type outCfg struct {
 	WSHost   string   `json:"ws_host"`  // ws: 自定义 Host 头（经 CDN 时用）
 	WSPath   string   `json:"ws_path"`  // ws: 自定义路径
 	Fallback *outCfg  `json:"fallback"` // 故障转移组
+	// 反向隧道：不主动连出口，而是用出口连进来的连接。GroupID 是这个出口组的 ID
+	Reverse bool `json:"reverse"`
+	GroupID uint `json:"group_id"`
 	// 故障判定：连续失败 MaxFail 次后，在 FailTimeout 秒内不再分配新连接
 	MaxFail     int `json:"max_fail"`
 	FailTimeout int `json:"fail_timeout"`
@@ -61,12 +64,15 @@ type ruleCfg struct {
 }
 
 type syncResp struct {
-	Type        string    `json:"type"`
-	Interval    int       `json:"interval"`
-	TunnelPort  int       `json:"tunnel_port"`
-	TunnelKey   string    `json:"tunnel_key"`
-	TunnelProto string    `json:"tunnel_proto"`
-	Rules       []ruleCfg `json:"rules"`
+	Type        string `json:"type"`
+	Interval    int    `json:"interval"`
+	TunnelPort  int    `json:"tunnel_port"`
+	TunnelKey   string `json:"tunnel_key"`
+	TunnelProto string `json:"tunnel_proto"`
+	// 出口侧：本组的 ID，以及需要主动连过去的入口反向地址
+	GroupID uint      `json:"group_id"`
+	Reverse []string  `json:"reverse"`
+	Rules   []ruleCfg `json:"rules"`
 }
 
 type ruleStatus struct {
@@ -87,6 +93,7 @@ type syncReq struct {
 	// 出口节点自己指定的隧道端口和权重（0 表示用设备组的设置 / 默认权重 1）
 	TunnelPort int `json:"tunnel_port"`
 	Weight     int `json:"weight"`
+	RevPort    int `json:"rev_port"` // 入口的反向隧道监听端口
 }
 
 // ---------- 流量与连接数统计 ----------
@@ -143,6 +150,7 @@ func main() {
 	name := flag.String("name", "", "节点名称，默认使用主机名")
 	enableTerm := flag.Bool("enable-terminal", false, "允许面板管理员通过在线终端在本机执行命令（以本进程的用户身份）")
 	weight := flag.Int("weight", 0, "（出口）负载均衡权重，默认 1")
+	revPort := flag.Int("rev-port", 0, "（入口）反向隧道监听端口。设置后，内网里的出口可以主动连到本入口")
 	flag.IntVar(&localTunnelPort, "tunnel-port", 0, "（出口）隧道监听端口，默认使用设备组的设置")
 	flag.Parse()
 	loadEnv()
@@ -158,6 +166,9 @@ func main() {
 			}
 			if v, err := strconv.Atoi(fc["tunnel-port"]); err == nil {
 				localTunnelPort = v
+			}
+			if v, err := strconv.Atoi(fc["rev-port"]); err == nil {
+				*revPort = v
 			}
 			if v, err := strconv.Atoi(fc["default-weight"]); err == nil {
 				*weight = v
@@ -185,6 +196,12 @@ func main() {
 	if env.healthCheck {
 		go runHealthCheck()
 	}
+	if *revPort > 0 {
+		if err := listenReverse(*revPort); err != nil {
+			log.Printf("反向隧道端口 %d 监听失败: %v", *revPort, err)
+			*revPort = 0
+		}
+	}
 	in := newIngress()
 	out := &egress{}
 	log.Printf("nodeclient %s 启动，节点 ID %s", version, uid)
@@ -202,7 +219,7 @@ func main() {
 		t := takeTraffic()
 		req := syncReq{UID: uid, Name: *name, Version: version, Advertise: *advertise,
 			Conns: activeConns.Load(), Rules: in.statuses(), Traffic: t,
-			Status: probe.collect(), Terminal: *enableTerm, TunnelPort: localTunnelPort, Weight: *weight}
+			Status: probe.collect(), Terminal: *enableTerm, TunnelPort: localTunnelPort, Weight: *weight, RevPort: *revPort}
 		resp, err := doSync(client, url, *token, &req)
 		interval := 10
 		if err != nil {

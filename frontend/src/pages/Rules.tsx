@@ -42,7 +42,8 @@ function GroupLabel({ g }: { g: Group }) {
   )
 }
 
-export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; username: string }; onBack?: () => void }) {
+// ofUser: 管理员查看某个用户的规则；all: 管理员跨用户搜索全部规则
+export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; username: string }; all?: boolean; onBack?: () => void }) {
   const { user, reload: reloadUser } = useAuth()
   const { message, modal } = AntApp.useApp()
   const [rules, setRules] = useState<Rule[]>([])
@@ -50,7 +51,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
   const [ruleGroups, setRuleGroups] = useState<NamedGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(!!all) // 跨用户搜索时一进来就弹出搜索框
   const [filter, setFilter] = useState<number | 'all'>('all') // 规则分组筛选，0 = 未分组
   const [selected, setSelected] = useState<number[]>([])
 
@@ -67,7 +68,8 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
   const [diag, setDiag] = useState<{ rule: Rule; nodes: DiagNode[] | null } | null>(null)
 
   // 管理员从「用户管理」进来时看的是某个用户的规则
-  const scopeAll = !!ofUser
+  const scopeAll = !!ofUser || !!all
+  const adminView = scopeAll
   const load = useCallback(async () => {
     try {
       const [r, g, rg] = await Promise.all([
@@ -108,7 +110,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
     return rules.filter((r) => {
       if (filter !== 'all' && r.group_id !== filter) return false
       if (!kw) return true
-      return [r.name, r.targets, String(r.listen_port), groupById[r.in_group_id]?.name, groupById[r.out_group_id]?.name]
+      return [r.name, r.targets, String(r.listen_port), groupById[r.in_group_id]?.name, groupById[r.out_group_id]?.name, r.username]
         .some((x) => x && x.toLowerCase().includes(kw))
     })
   }, [rules, filter, search, groupById])
@@ -292,6 +294,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
         </Space>
       ),
     },
+    ...(all ? [{ title: '用户', dataIndex: 'username', sorter: (a: Rule, b: Rule) => cmp(a.username, b.username) }] : []),
     {
       title: '入口',
       sorter: (a, b) => cmp(gname(a.in_group_id), gname(b.in_group_id)) || a.listen_port - b.listen_port,
@@ -364,8 +367,8 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
     <Card
       title={
         <Space size={16} wrap style={{ padding: '12px 0' }}>
-          <span>{ofUser ? `找到 ${rules.length} 条规则` : '我的转发规则'}</span>
-          {ofUser && <Button onClick={onBack}>返回所有用户</Button>}
+          <span>{adminView ? `找到 ${shown.length} 条规则` : '我的转发规则'}</span>
+          {adminView && <Button onClick={onBack}>返回所有用户</Button>}
           <Button icon={<SearchOutlined />} type={search ? 'primary' : 'default'} onClick={() => setSearchOpen(true)}>
             搜索规则
           </Button>
@@ -375,7 +378,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
       }
     >
       <Space wrap size={[14, 8]} style={{ marginBottom: 12 }}>
-        {!ofUser && (
+        {!adminView && (
           <>
             <Tag style={{ margin: 0 }}>流量: {fmtTraffic(user.traffic_used, user.traffic_limit)}</Tag>
             <Tag style={{ margin: 0 }}>到期: {fmtTime(user.expire_at)}</Tag>
@@ -394,8 +397,8 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
       </Space>
       <div>
         <Space wrap size={[14, 8]} style={{ marginBottom: 14 }}>
-          {!ofUser && <Button icon={<FileAddOutlined />} onClick={() => openEdit({})}>添加规则</Button>}
-          {!ofUser && <Button icon={<FileAddOutlined />} onClick={openImport}>批量导入</Button>}
+          {!adminView && <Button icon={<FileAddOutlined />} onClick={() => openEdit({})}>添加规则</Button>}
+          {!adminView && <Button icon={<FileAddOutlined />} onClick={openImport}>批量导入</Button>}
           <Button icon={<CopyOutlined />} onClick={openExport}>批量导出</Button>
           <Button icon={<CheckSquareOutlined />} onClick={openSwitch}>批量切换</Button>
           <Button icon={<FireOutlined />} onClick={() => confirmBatch(`清空选中的 ${selected.length} 条规则的已用流量？`, 'reset_traffic', '只清零规则自身的统计，不会退还账户已扣的流量。')}>
@@ -416,7 +419,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
         pagination={{ showSizeChanger: true, defaultPageSize: 20, hideOnSinglePage: true }}
       />
 
-      {!ofUser && (
+      {!adminView && (
         <FloatButton.Group shape="square" style={{ insetInlineEnd: 24, insetBlockEnd: 48 }}>
           {float(<FolderAddOutlined />, '分组', () => setGroupsOpen(true))}
           {float(<FileAddOutlined />, '单条', () => openEdit({}))}

@@ -1,13 +1,14 @@
 #!/bin/bash
 # 面板一键安装。把发布包解压后，在目录里以 root 运行：
-#   bash install.sh                       # HTTP，监听 8080 端口
-#   bash install.sh -port 9000            # 换端口
-#   bash install.sh -domain ny.example.com  # 自动申请 HTTPS 证书，监听 443/80（域名需已解析到本机）
-# 重复运行即为升级：只替换程序，保留数据。
+#   bash install.sh                         # 引导模式：一步步询问域名或端口
+#   bash install.sh -port 9000              # 不提问，HTTP，监听指定端口
+#   bash install.sh -domain ny.example.com  # 不提问，自动申请 HTTPS 证书，监听 443/80（域名需已解析到本机）
+# 已经装过时不带参数再运行一次即为升级：只替换程序，保留数据和原来的域名/端口。
 set -e
 
-PORT=8080
+PORT=""
 DOMAIN=""
+ARGC=$#
 while [ $# -gt 0 ]; do
   case "$1" in
     -port) PORT="$2"; shift 2 ;;
@@ -20,6 +21,42 @@ done
 command -v systemctl >/dev/null || { echo "需要 systemd"; exit 1; }
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$SRC/panel" ] || { echo "找不到 panel 程序，请在解压出的目录里运行"; exit 1; }
+
+UNIT=/etc/systemd/system/fwdpanel.service
+ask() { # 提示语 默认值 -> 用户输入（回车取默认值）
+  local a
+  read -r -p "$1" a </dev/tty
+  echo "${a:-$2}"
+}
+
+if [ "$ARGC" = "0" ] && [ -f "$UNIT" ]; then
+  # 已经装过、这次又没给参数：当作升级，沿用上次的域名/端口设置
+  OLD="$(grep '^ExecStart=' "$UNIT")"
+  case "$OLD" in
+    *"-domain "*) DOMAIN="$(echo "$OLD" | sed 's/.*-domain \([^ ]*\).*/\1/')" ;;
+    *"-listen :"*) PORT="$(echo "$OLD" | sed 's/.*-listen :\([0-9]*\).*/\1/')" ;;
+  esac
+  echo "检测到已安装的面板，将只升级程序，保留数据和原来的设置（${DOMAIN:+域名 $DOMAIN}${PORT:+端口 $PORT}）。"
+  if [ -t 0 ]; then
+    [ "$(ask '继续？[Y/n] ' y)" = "n" ] && { echo "已取消"; exit 0; }
+  fi
+elif [ "$ARGC" = "0" ] && [ -t 0 ]; then
+  # 引导模式：没带参数、又是在终端里运行
+  echo "===== 面板安装向导 ====="
+  echo "面板可以用两种方式访问："
+  echo "  1) 域名 + 自动 HTTPS（推荐。域名需要已经解析到这台服务器，并放行 80 和 443 端口）"
+  echo "  2) IP + 端口，HTTP（不加密，只建议测试时用）"
+  if [ "$(ask '请选择 [1/2]，默认 2: ' 2)" = "1" ]; then
+    while [ -z "$DOMAIN" ]; do DOMAIN="$(ask '请输入域名（例如 panel.example.com）: ' '')"; done
+    echo "将使用 Let's Encrypt 自动申请证书，这表示你同意它的服务条款。"
+  else
+    PORT="$(ask '请输入面板端口，默认 8080: ' 8080)"
+  fi
+  echo
+  echo "即将安装: ${DOMAIN:+https://$DOMAIN（监听 443 和 80）}${PORT:+HTTP 端口 $PORT}，安装到 /opt/fwdpanel"
+  [ "$(ask '确认安装？[Y/n] ' y)" = "n" ] && { echo "已取消"; exit 0; }
+fi
+[ -z "$DOMAIN" ] && [ -z "$PORT" ] && PORT=8080
 
 DIR=/opt/fwdpanel
 mkdir -p "$DIR/data"

@@ -241,6 +241,9 @@ func pickEgress(out *outCfg, tried map[string]bool) (string, bool) {
 
 // dialGroup 用这个出口组的密钥给 h 签名，然后逐个尝试组内的出口，直到有一个握手成功。
 func dialGroup(out *outCfg, h tunnelHello) (net.Conn, error) {
+	if out.Reverse {
+		return dialReverse(out, h)
+	}
 	failTimeout := time.Duration(out.FailTimeout) * time.Second
 	h.TS = time.Now().Unix()
 	h.Sig = h.sign(out.Key)

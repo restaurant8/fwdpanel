@@ -81,6 +81,8 @@ type DeviceGroup struct {
 	UDPSmartBind bool   `json:"udp_smart_bind"` // UDP 源进源出（目前只保存）
 	// HideInStatus 在节点状态页隐藏：0 不隐藏，1 对非管理员隐藏，2 对所有人隐藏
 	HideInStatus int `json:"hide_in_status"`
+	// OwnerID 不为 0 表示这是用户自带的出口，只有这个用户自己能用
+	OwnerID uint `json:"owner_id"`
 	// Config 是「高级编辑」保存的 JSON，见 groupConfig
 	Config string `json:"config"`
 	// OfflineDrain 仅出口组：负载下线秒数（目前只保存）
@@ -115,6 +117,7 @@ type Node struct {
 	// 出口节点自己指定的隧道端口和权重，0 表示用设备组的端口 / 权重 1
 	TunnelPort int       `json:"tunnel_port"`
 	Weight     int       `json:"weight"`
+	RevPort    int       `json:"rev_port"` // 入口节点的反向隧道监听端口，0 表示没有开启
 	LastSeen   time.Time `json:"last_seen"`
 	CreatedAt  time.Time `json:"created_at"`
 }

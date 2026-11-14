@@ -450,6 +450,9 @@ type groupConfig struct {
 	// 出口故障判定：连续失败 max_fail 次后，fail_timeout_sec 秒内不再分配新连接
 	MaxFail        int `json:"max_fail,omitempty"`
 	FailTimeoutSec int `json:"fail_timeout_sec,omitempty"`
+	// 反向隧道：这些出口组由出口主动连入口（出口在内网时用）。填出口组 ID，[0] 表示所有出口组。
+	// 只对启动时带了 -rev-port 的入口节点生效
+	ReverseGroup []uint `json:"reverse_group,omitempty"`
 	// TLS 入站策略：0 不限制；1 只允许 TLS 入站规则；2 只允许 TLS 入站规则，且只有管理员能监听端口（用户只能建子规则）
 	TLSInboundPolicy int `json:"tls_inbound_policy,omitempty"`
 	// 拒绝不带 SNI 的 TLS 连接（防扫描）

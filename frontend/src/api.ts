@@ -113,6 +113,7 @@ export interface AdminGroup {
   failover_group_id: number
   hops: number[]
   config: string
+  owner_id: number
 }
 
 export interface NamedGroup {
@@ -196,6 +197,7 @@ export interface Site {
   notice: string
   version: string
   node_version: string
+  allow_user_egress: boolean
 }
 
 export interface Plan {

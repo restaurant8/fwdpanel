@@ -3,11 +3,11 @@
 #   在线:  bash <(curl -fLSs https://面板地址/download/install.sh) -panel https://面板地址 -token 对接密钥
 #   离线:  解压安装包后在目录里运行  bash install.sh -panel https://面板地址 -token 对接密钥
 # 其余参数（如 -advertise、-enable-terminal、-name）会原样传给节点端程序。
-# 环境变量 S 指定服务名（默认 nodeclient），同一台机器装多个节点时用不同的名字。
+# 在终端里直接运行时是引导模式：会询问服务名；如果已经装过，会问是升级还是重装。
+# 用环境变量 S 指定服务名（例如 S=node2 bash <(curl ...) ...）则全程不提问，适合自动化；
+# 同一台机器装多个节点时给每个节点不同的服务名。
 set -e
 
-NAME="${S:-nodeclient}"
-DIR="/opt/$NAME"
 PANEL=""
 args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do
@@ -17,6 +17,38 @@ done
 [ "$(id -u)" = "0" ] || { echo "请用 root 运行"; exit 1; }
 [ -n "$PANEL" ] || { echo "缺少 -panel 参数"; exit 1; }
 command -v systemctl >/dev/null || { echo "需要 systemd"; exit 1; }
+
+ask() { # 提示语 默认值 -> 用户输入（回车取默认值）
+  local a
+  read -r -p "$1" a </dev/tty
+  echo "${a:-$2}"
+}
+
+# 没有用 S= 指定服务名、又是在终端里运行时进入引导模式；否则不提问
+NAME="${S:-}"
+GUIDED=0
+if [ -z "$NAME" ] && [ -t 0 ]; then
+  GUIDED=1
+  echo "===== 节点端安装向导 ====="
+  NAME="$(ask '服务名（同一台机器装多个节点时用不同的名字），默认 nodeclient: ' nodeclient)"
+fi
+NAME="${NAME:-nodeclient}"
+case "$NAME" in *[!A-Za-z0-9_-]*) echo "服务名只能包含字母、数字、- 和 _"; exit 1 ;; esac
+DIR="/opt/$NAME"
+
+# 已经装过同名服务：引导模式下让用户选择升级还是重装
+MODE=install
+if [ -f "$DIR/start.sh" ] && [ "$GUIDED" = "1" ]; then
+  echo "检测到已经安装了 $NAME。"
+  echo "  u) 保留现有配置，只升级程序"
+  echo "  r) 重新安装（用这次命令里的参数覆盖配置）"
+  echo "  q) 取消"
+  case "$(ask '请选择 [u/r/q]，默认 u: ' u)" in
+    u) MODE=upgrade ;;
+    r) MODE=install ;;
+    *) echo "已取消"; exit 0 ;;
+  esac
+fi
 
 case "$(uname -m)" in
   x86_64 | amd64)
@@ -42,16 +74,18 @@ else
 fi
 chmod +x "$DIR/nodeclient"
 
-# 启动参数写进 start.sh，以后要改参数就改这个文件再重启服务
-{
-  echo '#!/bin/bash'
-  echo 'cd "$(dirname "$0")"'
-  echo '[ -f ./env.sh ] && . ./env.sh'
-  printf 'exec ./nodeclient'
-  printf ' %q' "$@"
-  echo
-} > "$DIR/start.sh"
-chmod 700 "$DIR/start.sh"
+if [ "$MODE" = "install" ]; then
+  # 启动参数写进 start.sh，以后要改参数就改这个文件再重启服务
+  {
+    echo '#!/bin/bash'
+    echo 'cd "$(dirname "$0")"'
+    echo '[ -f ./env.sh ] && . ./env.sh'
+    printf 'exec ./nodeclient'
+    printf ' %q' "$@"
+    echo
+  } > "$DIR/start.sh"
+  chmod 700 "$DIR/start.sh"
+fi
 
 cat > "/etc/systemd/system/$NAME.service" <<UNIT
 [Unit]

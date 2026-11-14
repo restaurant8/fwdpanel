@@ -34,6 +34,7 @@ type syncReq struct {
 	// 出口节点自己指定的隧道端口和权重
 	TunnelPort int `json:"tunnel_port"`
 	Weight     int `json:"weight"`
+	RevPort    int `json:"rev_port"`
 }
 
 type syncOut struct {
@@ -45,6 +46,9 @@ type syncOut struct {
 	WSHost   string   `json:"ws_host,omitempty"`
 	WSPath   string   `json:"ws_path,omitempty"`
 	Fallback *syncOut `json:"fallback,omitempty"` // 出口故障转移组
+	// 反向隧道：入口不主动连出口，而是使用出口连进来的连接
+	Reverse bool `json:"reverse,omitempty"`
+	GroupID uint `json:"group_id,omitempty"`
 	// 故障判定参数，来自入口组的高级配置
 	MaxFail     int `json:"max_fail,omitempty"`
 	FailTimeout int `json:"fail_timeout,omitempty"`
@@ -87,12 +91,15 @@ type syncRule struct {
 }
 
 type syncResp struct {
-	Type        string     `json:"type"`
-	Interval    int        `json:"interval"`
-	TunnelPort  int        `json:"tunnel_port,omitempty"`
-	TunnelKey   string     `json:"tunnel_key,omitempty"`
-	TunnelProto string     `json:"tunnel_proto,omitempty"`
-	Rules       []syncRule `json:"rules"`
+	Type        string `json:"type"`
+	Interval    int    `json:"interval"`
+	TunnelPort  int    `json:"tunnel_port,omitempty"`
+	TunnelKey   string `json:"tunnel_key,omitempty"`
+	TunnelProto string `json:"tunnel_proto,omitempty"`
+	// 出口侧：本组 ID，以及需要主动连过去的入口反向地址
+	GroupID uint       `json:"group_id,omitempty"`
+	Reverse []string   `json:"reverse,omitempty"`
+	Rules   []syncRule `json:"rules"`
 }
 
 // handleNodeSync 是节点与面板之间的主要接口：
@@ -114,7 +121,7 @@ func handleNodeSync(c *gin.Context) {
 	db.Where(Node{GroupID: g.ID, UID: req.UID}).FirstOrCreate(&node)
 	node.Name, node.Version, node.Advertise = req.Name, req.Version, req.Advertise
 	node.IP, node.Conns, node.LastSeen = c.ClientIP(), req.Conns, time.Now()
-	node.TunnelPort, node.Weight = req.TunnelPort, req.Weight
+	node.TunnelPort, node.Weight, node.RevPort = req.TunnelPort, req.Weight, req.RevPort
 	db.Save(&node)
 	setLive(node.ID, nodeLive{Status: req.Status, Terminal: req.Terminal})
 
@@ -152,6 +159,10 @@ func handleNodeSync(c *gin.Context) {
 				o.Fallback.MaxFail, o.Fallback.FailTimeout = myCfg.MaxFail, myCfg.FailTimeoutSec
 			}
 			o.MaxFail, o.FailTimeout = myCfg.MaxFail, myCfg.FailTimeoutSec
+			// 本入口节点开了反向端口，且入口组配置了这个出口组走反向隧道
+			if g.Type == GroupIn && node.RevPort > 0 && wantsReverse(myCfg.ReverseGroup, og.ID) {
+				o.Reverse, o.GroupID = true, og.ID
+			}
 			outs[key] = o
 		}
 		return o
@@ -169,6 +180,7 @@ func handleNodeSync(c *gin.Context) {
 		db.Where("in_group_id = ? AND paused = ?", g.ID, false).Find(&rules)
 	} else {
 		resp.TunnelPort, resp.TunnelKey, resp.TunnelProto = g.TunnelPort, g.TunnelKey, tunnelProto(&g)
+		resp.GroupID, resp.Reverse = g.ID, reverseTargets(g.ID)
 		db.Where("out_group_id <> 0 AND paused = ?", false).Find(&rules)
 	}
 
@@ -239,6 +251,31 @@ func tunnelProto(g *DeviceGroup) string {
 		return "ws"
 	}
 	return "tls"
+}
+
+func wantsReverse(list []uint, outID uint) bool {
+	return containsID(list, 0) || containsID(list, outID)
+}
+
+// reverseTargets 返回出口组 outID 需要主动连过去的入口反向地址：
+// 所有把它列进 reverse_group 的入口组里，开了反向端口的在线节点。
+func reverseTargets(outID uint) []string {
+	var ins []DeviceGroup
+	db.Where("type = ?", GroupIn).Find(&ins)
+	out := []string{}
+	for i := range ins {
+		if !wantsReverse(ins[i].cfg().ReverseGroup, outID) {
+			continue
+		}
+		var nodes []Node
+		db.Where("group_id = ? AND rev_port > 0", ins[i].ID).Find(&nodes)
+		for j := range nodes {
+			if nodes[j].online() {
+				out = append(out, net.JoinHostPort(nodes[j].host(), strconv.Itoa(nodes[j].RevPort)))
+			}
+		}
+	}
+	return out
 }
 
 // outInfo 返回入口连接某个出口组所需的信息：协议、密钥，以及每个在线节点的地址和权重。

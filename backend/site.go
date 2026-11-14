@@ -2,16 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-const panelVersion = "0.6.0"
+const panelVersion = "0.7.0"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.6.0"
+const nodeVersion = "0.7.0"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //
@@ -61,6 +63,8 @@ type siteSettings struct {
 	AllowRegister  *bool  `json:"allow_register"`
 	Notice         string `json:"notice"`
 	DiagnoseHideIP int    `json:"diagnose_hide_ip"`
+	// 允许用户自带出口（单端隧道）
+	AllowUserEgress bool `json:"allow_user_egress"`
 }
 
 func loadSite() siteSettings {
@@ -84,7 +88,7 @@ func registerAllowed() bool {
 func handleSite(c *gin.Context) {
 	s := loadSite()
 	c.JSON(200, gin.H{"title": s.Title, "allow_register": registerAllowed(), "notice": s.Notice,
-		"version": panelVersion, "node_version": nodeVersion, "diagnose_hide_ip": s.DiagnoseHideIP})
+		"allow_user_egress": s.AllowUserEgress, "version": panelVersion, "node_version": nodeVersion, "diagnose_hide_ip": s.DiagnoseHideIP})
 }
 
 // handleShop 返回商城页需要的数据：未隐藏的套餐、已启用的支付通道名称、最小充值金额。
@@ -180,4 +184,74 @@ func handleStatus(c *gin.Context) {
 		}
 	}
 	c.JSON(200, out)
+}
+
+// ---------- 用户自带出口（单端隧道） ----------
+//
+// 站点开启后，用户可以建自己的出口设备组、把自己的机器对接上来。这种出口只有本人能用，倍率为 0。
+
+const maxUserEgress = 5
+
+func handleListMyEgress(c *gin.Context) {
+	groups := []DeviceGroup{}
+	db.Where("owner_id = ?", me(c).ID).Order("id").Find(&groups)
+	on := onlineCounts()
+	type row struct {
+		ID     uint   `json:"id"`
+		Name   string `json:"name"`
+		Token  string `json:"token"`
+		Online int    `json:"online"`
+	}
+	out := make([]row, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, row{g.ID, g.Name, g.Token, on[g.ID]})
+	}
+	c.JSON(200, out)
+}
+
+func handleCreateMyEgress(c *gin.Context) {
+	u := me(c)
+	if !loadSite().AllowUserEgress && !u.Admin {
+		fail(c, 403, "本站没有开放用户自带出口")
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		fail(c, 400, "请求格式错误")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || len(req.Name) > 64 {
+		fail(c, 400, "名称需为 1-64 个字符")
+		return
+	}
+	var n int64
+	if db.Model(&DeviceGroup{}).Where("owner_id = ?", u.ID).Count(&n); n >= maxUserEgress {
+		fail(c, 400, fmt.Sprintf("每个用户最多 %d 个自带出口", maxUserEgress))
+		return
+	}
+	g := DeviceGroup{Name: req.Name, Type: GroupOut, OwnerID: u.ID, TunnelProto: "tls_simple",
+		Token: randHex(20), TunnelKey: randHex(24), TunnelPort: freeTunnelPort(), HideInStatus: 1}
+	if dbFail(c, db.Create(&g).Error) {
+		return
+	}
+	c.JSON(200, gin.H{"id": g.ID, "name": g.Name, "token": g.Token, "online": 0})
+}
+
+func handleDeleteMyEgress(c *gin.Context) {
+	var g DeviceGroup
+	if db.First(&g, "id = ? AND owner_id = ?", c.Param("id"), me(c).ID).Error != nil {
+		fail(c, 404, "出口不存在")
+		return
+	}
+	var n int64
+	if db.Model(&Rule{}).Where("out_group_id = ?", g.ID).Count(&n); n > 0 {
+		fail(c, 400, "还有规则在使用这个出口，请先修改或删除这些规则")
+		return
+	}
+	db.Delete(&Node{}, "group_id = ?", g.ID)
+	db.Delete(&g)
+	c.JSON(200, gin.H{"ok": true})
 }

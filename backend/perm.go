@@ -28,6 +28,9 @@ func joinIDs(ids []uint) string {
 
 // groupAllowsUser 判断用户能否使用某个设备组。管理员不受限制。
 func groupAllowsUser(g *DeviceGroup, u *User) bool {
+	if g.OwnerID != 0 {
+		return g.OwnerID == u.ID // 用户自带的出口只归本人使用，管理员也不能拿来建规则
+	}
 	if u.Admin {
 		return true
 	}

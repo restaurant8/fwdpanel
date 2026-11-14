@@ -39,4 +39,29 @@ export const parseIds = (s: string | undefined) =>
     .map((x) => parseInt(x, 10))
     .filter((n) => n > 0)
 
-export const copyText = (text: string) => navigator.clipboard.writeText(text)
+// copyText 复制文本到剪贴板。浏览器只在 HTTPS 或 localhost 页面上提供 navigator.clipboard，
+// 用 http://IP 访问面板时它不存在，所以要退回到老办法（选中一个临时文本框再执行复制命令）。
+export async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      /* 继续尝试老办法 */
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.focus()
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } finally {
+    document.body.removeChild(ta)
+  }
+  if (!ok) throw new Error('浏览器不允许复制')
+}

@@ -43,6 +43,7 @@ type egress struct {
 	ln    io.Closer
 	cfg   atomic.Pointer[egressCfg]
 	cert  *tls.Certificate
+	rev   reverseDialer // 反向隧道：出口主动连到入口
 }
 
 func selfSignedCert() (*tls.Certificate, error) {
@@ -79,6 +80,7 @@ func (e *egress) apply(r *syncResp) {
 		rules[rule.ID] = &egressRule{targets: m, next: rule.Next}
 	}
 	e.cfg.Store(&egressCfg{key: r.TunnelKey, rules: rules})
+	e.setReverse(r.Reverse, r.GroupID)
 
 	proto := r.TunnelProto
 	if proto != "ws" {
@@ -143,6 +145,7 @@ func (e *egress) apply(r *syncResp) {
 }
 
 func (e *egress) stop() {
+	e.setReverse(nil, 0)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.ln != nil {

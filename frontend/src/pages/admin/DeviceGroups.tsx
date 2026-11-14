@@ -80,8 +80,21 @@ export default function AdminDeviceGroups() {
   // ---------- 对接 ----------
   const origin = window.location.origin
   const installCmd = (g: AdminGroup) => `bash <(curl -fLSs ${origin}/download/install.sh) -panel ${origin} -token ${g.token}`
+  // 复制安装命令；浏览器不让复制时，把命令显示出来让用户手动复制
   const copyCmd = (g: AdminGroup) =>
-    copyText(installCmd(g)).then(() => message.success('安装命令已复制，到节点机器上以 root 运行即可'), () => message.error('复制失败'))
+    copyText(installCmd(g)).then(
+      () => void message.success('安装命令已复制，到节点机器上以 root 运行即可'),
+      () =>
+        void modal.info({
+          title: '请手动复制下面的安装命令', width: 640,
+          content: (
+            <>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', userSelect: 'all', background: 'rgba(150,150,150,0.12)', padding: 10, borderRadius: 6 }}>{installCmd(g)}</pre>
+              到节点机器上以 root 运行即可。
+            </>
+          ),
+        }),
+    )
   const connectMenu = (g: AdminGroup) => ({
     items: [
       { key: 'h', label: `${g.name} (#${g.id})`, disabled: true },
@@ -106,7 +119,15 @@ export default function AdminDeviceGroups() {
 
   const columns: ColumnsType<AdminGroup> = [
     { title: '排序', render: () => <HolderOutlined style={{ cursor: 'grab', color: '#999' }} /> },
-    { title: '名称', render: (_, g) => `${g.name} (#${g.id})` },
+    {
+      title: '名称',
+      render: (_, g) => (
+        <Space size={4}>
+          {g.name} (#{g.id})
+          {g.owner_id > 0 && <Tag color="gold" style={{ margin: 0 }}>用户 #{g.owner_id} 自带</Tag>}
+        </Space>
+      ),
+    },
     { title: '用户组 ID', render: (_, g) => g.allow_groups.join(',') },
     { title: '类型', render: (_, g) => typeLabel(g) },
     { title: '连接地址(仅入口展示用)', dataIndex: 'connect_addr', render: (t: string) => <span style={{ whiteSpace: 'pre-wrap' }}>{t}</span> },
@@ -293,6 +314,7 @@ export default function AdminDeviceGroups() {
               blocked_host / allowed_host: [".example.com"] — 域名黑名单 / 白名单（后缀匹配，二者不能同时用）<br />
               blocked_path: ["/admin"] — HTTP 路径黑名单（后缀匹配）<br />
               max_fail: 3, fail_timeout_sec: 30 — 出口连续失败几次后，多少秒内不再使用<br />
+              reverse_group: [3] — 这些出口组走反向隧道（出口主动连入口），[0] 表示全部；入口节点启动时需加 -rev-port 端口<br />
               tls_inbound_policy: 0/1/2 — 1 只允许 TLS 入站规则；2 且只有管理员能监听端口（用户只能建子规则）<br />
               tls_reject_empty_sni: true/false — 拒绝不带 SNI 的 TLS 连接
             </>

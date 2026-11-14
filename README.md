@@ -20,6 +20,8 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - 用户级限速、IP 数限制、连接数限制；规则级限速、IP 限制、连接数限制（每个入口节点单独计算）
 - 管理员新建用户只填用户名，密码随机生成并显示一次；可重置密码
 
+**用户自带出口**（单端隧道）：站点设置里开启后，用户可以在个人中心添加自己的出口并对接自己的机器，只有本人能用，不计倍率
+
 **设备组**（四种类型）
 - 仅监控：节点只上报探针数据
 - 入口：限制出口、连接地址（展示用）、端口范围、直接转发策略（禁止/可选/强制）、屏蔽 UDP（高级编辑）
@@ -43,6 +45,7 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - 出口故障判定：连续失败 `max_fail` 次后在 `fail_timeout_sec` 秒内不再使用；每 10 秒主动探测一次
 - 出口节点可单独指定隧道端口（`-tunnel-port`）和权重（`-weight`）；出口组可设置静态连接地址和 ws 的 host/path（经 CDN、NAT 时用）
 - 入站屏蔽（入口高级配置）：`blocked_protocol`（socks/http/tls）、`blocked_host`、`allowed_host`、`blocked_path`
+- 反向隧道（内网穿透）：出口在内网时由出口主动连到入口。入口节点启动加 `-rev-port 端口`，入口组高级配置里设置 `reverse_group`
 - 规则诊断：让入口节点按真实转发路径连一次目标，返回耗时
 - 远程升级：探针页对版本落后的节点显示升级按钮，节点从面板下载新版本后原地重启
 - 环境变量：`DISABLE_EXECUTE`、`BIND_INBOUND`、`BIND_OUTBOUND_4/6`、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、`HEALTH_CHECK`、`UUID`、`NYA_PROXY`
@@ -64,7 +67,7 @@ scripts/     build.sh 构建，demo.sh 本机演示
 
 ## 未实现
 
-- 反向隧道、用户自带出口、TLS 入站的整流选项
+- TLS 入站的整流选项
 - 原生 UDP 转发协议（目前 UDP 经隧道时走 UDP over TCP）
 - 屏蔽"全加密流量"(fet)、按 IPv6 优先连接出口（ipv6_group）、本地 group.json 覆盖
 - `NYA_PROXY` 只支持 http 和 socks5 代理
@@ -76,6 +79,7 @@ scripts/     build.sh 构建，demo.sh 本机演示
 在一台 Ubuntu 24.04 (x86_64) 服务器上实测过：
 - 面板安装脚本（安装、重复运行升级）、节点在线安装（自动选择 amd64v3）、离线部署包、卸载、开机自启
 - tls / ws 隧道、直接转发、UDP、TLS 入站、诊断、在线终端、探针数据
+- 引导式安装与升级、反向隧道（用防火墙挡住出口端口后验证）
 - 远程升级（下载后原地重启，转发不中断）、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、`BIND_INBOUND`
 - SQLite、MariaDB 10.11、PostgreSQL 16，以及三者之间的 `-copy-database`
 
@@ -104,10 +108,11 @@ scripts/build.sh
 tar xzf fwdpanel_linux_amd64.tar.gz && cd fwdpanel && bash install.sh -domain 你的域名
 ```
 
+- 不带参数时是**引导模式**，会一步步询问用域名还是端口；带参数则不提问，适合自动化。
 - `-domain 域名`：自动申请并续期 HTTPS 证书，监听 443/80。域名需要已解析到这台服务器。使用此参数即表示同意 Let's Encrypt 的服务条款。
 - 不带参数：HTTP，监听 8080；`-port 9000` 可换端口。
 - 脚本会注册 systemd 服务 `fwdpanel`，装完打印面板地址和管理员初始密码。
-- 重复运行即为升级，数据在 `/opt/fwdpanel/data`，备份这个目录即可。
+- 已经装过时不带参数再运行一次即为升级，保留原来的域名/端口设置；数据在 `/opt/fwdpanel/data`，备份这个目录即可。
 
 ### 3. 对接节点（在节点服务器上）
 
@@ -116,7 +121,8 @@ tar xzf fwdpanel_linux_amd64.tar.gz && cd fwdpanel && bash install.sh -domain �
 
 - 节点机器连不上面板下载时，用「对接 → 离线部署」下载对应架构的 `.tar.gz` 包，传上去后按弹窗里的命令解压并运行 `install.sh`。
 - 在安装命令后面可以追加节点端参数，例如 `-advertise 1.2.3.4`（出口对外地址）、`-enable-terminal`（允许在线终端）。
-- 同一台机器装多个节点：命令前加 `S=名字`，例如 `S=node2 bash <(curl ...) ...`。
+- 在终端里直接运行时会询问服务名；如果已经装过，可以选择"只升级程序"或"重新安装"。
+- 不想被提问、或同一台机器装多个节点：命令前加 `S=名字`，例如 `S=node2 bash <(curl ...) ...`。
 - 日志 `journalctl -fu nodeclient`，卸载 `bash /opt/nodeclient.uninstall.sh`。
 
 ### 本机试用
