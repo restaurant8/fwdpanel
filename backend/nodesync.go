@@ -50,6 +50,13 @@ type syncOut struct {
 	FailTimeout int `json:"fail_timeout,omitempty"`
 }
 
+// syncTLS 是下发给入口节点的 TLS 入站设置。
+type syncTLS struct {
+	ruleTLS
+	SNIs           []string `json:"snis"`
+	RejectEmptySNI bool     `json:"reject_empty_sni,omitempty"`
+}
+
 // syncFilter 是入口组高级配置里的入站屏蔽设置。
 type syncFilter struct {
 	BlockedProtocol []string `json:"blocked_protocol,omitempty"`
@@ -76,6 +83,7 @@ type syncRule struct {
 	SendPP     int         `json:"send_pp,omitempty"`
 	Out        *syncOut    `json:"out,omitempty"`
 	Filter     *syncFilter `json:"filter,omitempty"`
+	TLS        *syncTLS    `json:"tls,omitempty"`
 }
 
 type syncResp struct {
@@ -205,6 +213,9 @@ func handleNodeSync(c *gin.Context) {
 			sr.UserID, sr.UserSpeed, sr.RuleSpeed, sr.IPLimit = u.ID, u.SpeedLimit, r.SpeedLimit, u.IPLimit
 			sr.UserConns = u.ConnLimit
 			sr.Filter = filter
+			if r.TLS != nil {
+				sr.TLS = &syncTLS{ruleTLS: *r.TLS, SNIs: r.TLS.sniList(), RejectEmptySNI: myCfg.TLSRejectEmptySNI}
+			}
 			if out != nil {
 				sr.Out = outFor(path[0], !chain)
 			}

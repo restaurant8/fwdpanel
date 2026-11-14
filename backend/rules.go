@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"net"
@@ -68,19 +69,20 @@ type ruleDTO struct {
 }
 
 type ruleReq struct {
-	Name       string `json:"name"`
-	InGroupID  uint   `json:"in_group_id"`
-	OutGroupID uint   `json:"out_group_id"`
-	ListenPort int    `json:"listen_port"`
-	Targets    string `json:"targets"`
-	LB         string `json:"lb"`
-	Paused     bool   `json:"paused"`
-	AcceptPP   bool   `json:"accept_pp"`
-	SendPP     int    `json:"send_pp"`
-	IPLimit    int    `json:"ip_limit"`
-	ConnLimit  int    `json:"conn_limit"`
-	SpeedLimit int64  `json:"speed_limit"`
-	GroupID    uint   `json:"group_id"`
+	Name       string   `json:"name"`
+	InGroupID  uint     `json:"in_group_id"`
+	OutGroupID uint     `json:"out_group_id"`
+	ListenPort int      `json:"listen_port"`
+	Targets    string   `json:"targets"`
+	LB         string   `json:"lb"`
+	Paused     bool     `json:"paused"`
+	AcceptPP   bool     `json:"accept_pp"`
+	SendPP     int      `json:"send_pp"`
+	IPLimit    int      `json:"ip_limit"`
+	ConnLimit  int      `json:"conn_limit"`
+	SpeedLimit int64    `json:"speed_limit"`
+	GroupID    uint     `json:"group_id"`
+	TLS        *ruleTLS `json:"tls"`
 }
 
 func normalizeTargets(s string) (string, error) {
@@ -156,6 +158,9 @@ func applyRuleReq(r *Rule, req *ruleReq) error {
 	if req.SpeedLimit < 0 || req.IPLimit < 0 || req.ConnLimit < 0 {
 		return fmt.Errorf("限制不能为负数")
 	}
+	if err := checkRuleTLS(r, req.TLS, &in, &owner); err != nil {
+		return err
+	}
 	if req.SendPP < 0 || req.SendPP > 2 {
 		return fmt.Errorf("发送 Proxy Protocol 需为 0（关闭）、1 或 2")
 	}
@@ -198,6 +203,11 @@ func applyRuleReq(r *Rule, req *ruleReq) error {
 	r.ListenPort, r.Targets, r.LB, r.Paused = port, targets, req.LB, req.Paused
 	r.SpeedLimit, r.GroupID = req.SpeedLimit, req.GroupID
 	r.AcceptPP, r.SendPP, r.IPLimit, r.ConnLimit = req.AcceptPP, req.SendPP, req.IPLimit, req.ConnLimit
+	r.TLS, r.TLSConfig = nil, ""
+	if req.TLS != nil && req.TLS.Mode != tlsOff {
+		raw, _ := json.Marshal(req.TLS)
+		r.TLS, r.TLSConfig = req.TLS, string(raw)
+	}
 	return nil
 }
 
@@ -403,7 +413,7 @@ func handleBatchAction(c *gin.Context) {
 		}
 		rr := ruleReq{Name: r.Name, InGroupID: r.InGroupID, OutGroupID: r.OutGroupID, ListenPort: r.ListenPort,
 			Targets: r.Targets, LB: r.LB, Paused: r.Paused, SpeedLimit: r.SpeedLimit, GroupID: r.GroupID,
-			AcceptPP: r.AcceptPP, SendPP: r.SendPP, IPLimit: r.IPLimit, ConnLimit: r.ConnLimit}
+			AcceptPP: r.AcceptPP, SendPP: r.SendPP, IPLimit: r.IPLimit, ConnLimit: r.ConnLimit, TLS: r.TLS}
 		switch req.Action {
 		case "delete":
 			db.Delete(&r)

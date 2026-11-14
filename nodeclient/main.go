@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.5.0"
+const version = "0.6.0"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
@@ -57,6 +57,7 @@ type ruleCfg struct {
 	Next       *outCfg    `json:"next"` // 出口侧：链式出口里本跳之后的下一跳
 	Out        *outCfg    `json:"out"`
 	Filter     *filterCfg `json:"filter"` // 入站屏蔽
+	TLS        *tlsCfg    `json:"tls"`    // TLS 入站
 }
 
 type syncResp struct {

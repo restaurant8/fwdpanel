@@ -31,6 +31,8 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - TCP + UDP，指定或随机端口，多目标（随机 / 轮询 / 故障转移）
 - 直接转发与隧道转发；出口组内按最小连接数均衡，全组不可用时切到故障转移组
 - 接受 / 发送 Proxy Protocol（v1、v2，仅 TCP）
+- TLS 入站：独立规则（入口终结 TLS，校验 SNI/ALPN，可自带证书）、母规则 + 子规则（多条规则共用一个端口，按 SNI 分流）；
+  入口可设置 `tls_inbound_policy` 和 `tls_reject_empty_sni`
 - 规则分组、搜索、排序、多选、批量导入/导出/切换、清空流量、删除选中
 
 **节点**
@@ -57,12 +59,12 @@ scripts/     build.sh 构建，demo.sh 本机演示
 
 - 商城的充值、购买套餐、兑换码；订单与邀请记录；支付通道
 - Telegram 推送、设备离线通知
-- 规则的 TLS 入站、设备组分组、用户套餐、自动续费
+- 设备组分组、用户套餐、自动续费
 - 设备组的"UDP 智能绑定""负载下线"只保存不生效；协议 http 目前与 ws 的传输方式相同
 
 ## 未实现
 
-- TLS 入站与 SNI 分流、反向隧道、用户自带出口
+- 反向隧道、用户自带出口、TLS 入站的整流选项
 - 原生 UDP 转发协议（目前 UDP 经隧道时走 UDP over TCP）
 - 屏蔽"全加密流量"(fet)、按 IPv6 优先连接出口（ipv6_group）、本地 group.json 覆盖
 - `NYA_PROXY` 只支持 http 和 socks5 代理

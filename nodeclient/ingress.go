@@ -14,15 +14,17 @@ import (
 
 // ruleListener 是一条规则在入口上的监听（TCP、UDP 或两者；设置了 BIND_INBOUND 时每个 IP 各一份）。
 type ruleListener struct {
-	id     uint
-	port   int
-	proto  string
-	lns    []net.Listener
-	pcs    []net.PacketConn
-	err    string // 最近一次监听失败的原因，成功为空
-	cfg    atomic.Pointer[ruleCfg]
-	rr     atomic.Uint64
-	active atomic.Int64 // 当前连接数（含 UDP 会话）
+	id      uint
+	port    int
+	proto   string
+	tlsMode int      // TLS 入站模式，变化时要重建监听
+	in      *ingress // 所属的入口，母规则用它查找子规则
+	lns     []net.Listener
+	pcs     []net.PacketConn
+	err     string // 最近一次监听失败的原因，成功为空
+	cfg     atomic.Pointer[ruleCfg]
+	rr      atomic.Uint64
+	active  atomic.Int64 // 当前连接数（含 UDP 会话）
 
 	mu     sync.Mutex
 	conns  map[io.Closer]struct{}
@@ -51,10 +53,13 @@ func (in *ingress) apply(rules []ruleCfg) {
 	want := map[uint]*ruleCfg{}
 	for i := range rules {
 		rules[i].Proto = normProto(rules[i].Proto)
+		if tlsModeOf(&rules[i]) != 0 {
+			rules[i].Proto = "tcp" // TLS 入站只有 TCP
+		}
 		want[rules[i].ID] = &rules[i]
 	}
 	for id, l := range in.ls {
-		if c, ok := want[id]; !ok || c.ListenPort != l.port || c.Proto != l.proto {
+		if c, ok := want[id]; !ok || c.ListenPort != l.port || c.Proto != l.proto || tlsModeOf(c) != l.tlsMode {
 			l.close()
 			delete(in.ls, id)
 			log.Printf("规则 #%d 已停止 (端口 %d)", id, l.port)
@@ -63,7 +68,8 @@ func (in *ingress) apply(rules []ruleCfg) {
 	for id, c := range want {
 		l, ok := in.ls[id]
 		if !ok {
-			l = &ruleListener{id: id, port: c.ListenPort, proto: c.Proto, conns: map[io.Closer]struct{}{}}
+			l = &ruleListener{id: id, port: c.ListenPort, proto: c.Proto, tlsMode: tlsModeOf(c), in: in,
+				conns: map[io.Closer]struct{}{}}
 			in.ls[id] = l
 		}
 		l.cfg.Store(c)
@@ -89,8 +95,8 @@ func (l *ruleListener) lims(cfg *ruleCfg) []*limPair {
 
 // listen 打开监听。已经在监听就什么都不做；任何一个地址失败则全部撤掉，下次同步时重试。
 func (l *ruleListener) listen() {
-	if len(l.lns)+len(l.pcs) > 0 {
-		return
+	if len(l.lns)+len(l.pcs) > 0 || l.tlsMode == 3 {
+		return // 已在监听；或者是 TLS 子规则，不监听端口，由母规则把连接分过来
 	}
 	hosts := env.bindInbound
 	if len(hosts) == 0 {
@@ -198,6 +204,48 @@ func (l *ruleListener) handle(raw net.Conn) {
 			src = s
 		}
 	}
+	if cfg.TLS == nil || (cfg.TLS.Mode != 1 && cfg.TLS.Mode != 2) {
+		l.forward(raw, raw, src)
+		return
+	}
+
+	// TLS 入站：先在入口完成握手，再决定由哪条规则转发
+	c, sni, err := tlsAccept(raw, cfg.TLS, func(sni string) *tlsCfg {
+		if cfg.TLS.Mode == 2 {
+			if child := l.in.childFor(l.port, sni); child != nil {
+				return child.cfg.Load().TLS
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		raw.Close()
+		return
+	}
+	target, t := l, cfg.TLS
+	if cfg.TLS.Mode == 2 {
+		// 母规则自己不转发，按 SNI 交给子规则
+		if target = l.in.childFor(l.port, sni); target == nil {
+			raw.Close()
+			return
+		}
+		t = target.cfg.Load().TLS
+		if !target.track(raw) {
+			return
+		}
+		defer target.untrack(raw)
+	}
+	if !t.allows(sni, c.ConnectionState().NegotiatedProtocol) {
+		raw.Close()
+		return
+	}
+	target.forward(c, raw, src)
+}
+
+// forward 按本规则的设置转发一条已经接受的连接。
+// c 是读写数据用的连接（TLS 入站时是解密后的），raw 是底层的 TCP 连接。
+func (l *ruleListener) forward(c, raw net.Conn, src string) {
+	cfg := l.cfg.Load()
 	ip, _, _ := net.SplitHostPort(src)
 	release, ok := l.admit(cfg, ip)
 	if !ok {
@@ -206,9 +254,8 @@ func (l *ruleListener) handle(raw net.Conn) {
 	}
 	defer release()
 
-	c := raw
 	if cfg.Filter.active() {
-		if c, ok = screen(raw, cfg.Filter); !ok {
+		if c, ok = screen(c, cfg.Filter); !ok {
 			raw.Close()
 			return
 		}

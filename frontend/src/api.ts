@@ -139,8 +139,22 @@ export interface Rule {
   group_id: number
   paused: boolean
   traffic_used: number
+  tls: RuleTLS | null
   status: 'unsynced' | 'ok' | 'failed' | 'paused'
   status_msg: string
+}
+
+// TLS 入站：0 未开启，1 独立规则，2 母规则，3 子规则
+export interface RuleTLS {
+  mode: number
+  sni?: string
+  empty_sni?: boolean
+  force_empty_sni?: boolean
+  alpn?: string[]
+  cert?: string
+  key?: string
+  share_port?: number
+  uid?: string
 }
 
 export interface NodeStatus {

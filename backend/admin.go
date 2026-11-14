@@ -446,6 +446,10 @@ type groupConfig struct {
 	// 出口故障判定：连续失败 max_fail 次后，fail_timeout_sec 秒内不再分配新连接
 	MaxFail        int `json:"max_fail,omitempty"`
 	FailTimeoutSec int `json:"fail_timeout_sec,omitempty"`
+	// TLS 入站策略：0 不限制；1 只允许 TLS 入站规则；2 只允许 TLS 入站规则，且只有管理员能监听端口（用户只能建子规则）
+	TLSInboundPolicy int `json:"tls_inbound_policy,omitempty"`
+	// 拒绝不带 SNI 的 TLS 连接（防扫描）
+	TLSRejectEmptySNI bool `json:"tls_reject_empty_sni,omitempty"`
 
 	// ---- 出口 ----
 	TunnelPort *int `json:"tunnel_port,omitempty"`
@@ -476,6 +480,9 @@ func (c *groupConfig) validate() string {
 	}
 	if len(c.AllowedHost) > 0 && len(c.BlockedHost)+len(c.BlockedProtocol)+len(c.BlockedPath) > 0 {
 		return "allowed_host（白名单）不能和其他屏蔽选项同时使用"
+	}
+	if c.TLSInboundPolicy < 0 || c.TLSInboundPolicy > 2 {
+		return "tls_inbound_policy 取值为 0、1 或 2"
 	}
 	if c.MaxFail < 0 || c.FailTimeoutSec < 0 {
 		return "max_fail 和 fail_timeout_sec 不能为负数"

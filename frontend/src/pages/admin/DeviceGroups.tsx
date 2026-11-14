@@ -292,7 +292,9 @@ export default function AdminDeviceGroups() {
               blocked_protocol: ["socks","http","tls"] — 屏蔽这些协议<br />
               blocked_host / allowed_host: [".example.com"] — 域名黑名单 / 白名单（后缀匹配，二者不能同时用）<br />
               blocked_path: ["/admin"] — HTTP 路径黑名单（后缀匹配）<br />
-              max_fail: 3, fail_timeout_sec: 30 — 出口连续失败几次后，多少秒内不再使用
+              max_fail: 3, fail_timeout_sec: 30 — 出口连续失败几次后，多少秒内不再使用<br />
+              tls_inbound_policy: 0/1/2 — 1 只允许 TLS 入站规则；2 且只有管理员能监听端口（用户只能建子规则）<br />
+              tls_reject_empty_sni: true/false — 拒绝不带 SNI 的 TLS 连接
             </>
           )}
           {adv?.g.type === 'out' && (

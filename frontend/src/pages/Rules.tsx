@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   App as AntApp, Alert, Button, Card, Collapse, Drawer, Empty, FloatButton, Input, InputNumber, List, Modal, Popconfirm,
-  Select, Space, Table, Tag, Tooltip, Typography,
+  Select, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   BarChartOutlined, CheckSquareOutlined, CopyOutlined, DeleteOutlined, FileAddOutlined, FireOutlined, FolderAddOutlined,
   PauseCircleOutlined, PlayCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined,
 } from '@ant-design/icons'
-import { api, Group, isOutType, NamedGroup, Rule } from '../api'
+import { api, Group, isOutType, NamedGroup, Rule, RuleTLS } from '../api'
 import { useAuth } from '../App'
 import { copyText, errMsg, fmtGiB, fmtSpeed, fmtTime, fmtTraffic, MBPS } from '../util'
-import { Field, NotWired } from '../components/ui'
+import { Field } from '../components/ui'
 
 const statusTag: Record<Rule['status'], { color: string; text: string }> = {
   ok: { color: 'success', text: '正常' },
@@ -55,7 +55,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
   const [selected, setSelected] = useState<number[]>([])
 
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [tlsOpen, setTlsOpen] = useState(false)
+  const [tls, setTls] = useState<RuleTLS | null>(null) // 正在编辑的 TLS 入站设置
   const [importOpen, setImportOpen] = useState(false)
   const [imp, setImp] = useState<{ in_group_id?: number; out_group_id: number; lines: string }>({ out_group_id: 0, lines: '' })
   const [importErrors, setImportErrors] = useState<string[]>([])
@@ -286,6 +286,7 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
       render: (n: string, r) => (
         <Space size={4}>
           {n}
+          {r.tls && <Tag color="blue">TLS {tlsModes[r.tls.mode].slice(0, 3)}</Tag>}
           {(r.accept_pp || r.send_pp > 0) && <Tag>PP</Tag>}
           {r.speed_limit > 0 && <Tag color="orange">{fmtSpeed(r.speed_limit)}</Tag>}
         </Space>
@@ -444,8 +445,8 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
             <Field
               label="名称"
               extra={
-                <a style={{ fontWeight: 400, marginLeft: 48 }} onClick={() => setTlsOpen(true)}>
-                  TLS 入站: 未开启
+                <a style={{ fontWeight: 400, marginLeft: 48 }} onClick={() => setTls(draft.tls ?? { mode: 0 })}>
+                  TLS 入站: {tlsModes[draft.tls?.mode ?? 0]}
                 </a>
               }
             >
@@ -544,11 +545,86 @@ export default function Rules({ ofUser, onBack }: { ofUser?: { id: number; usern
         )}
       </Modal>
 
-      <Modal title="编辑 TLS 配置" open={tlsOpen} onCancel={() => setTlsOpen(false)} okText="保 存"
-        onOk={() => { message.info('TLS 入站' + NotWired.slice(3)); setTlsOpen(false) }} className="tight-form">
-        <Field label="TLS 入站" inline>
-          <Select style={{ width: 200, textAlign: 'left' }} defaultValue={tlsModes[0]} options={tlsModes.map((m) => ({ value: m, label: m }))} />
-        </Field>
+      <Modal
+        title="编辑 TLS 配置" open={!!tls} onCancel={() => setTls(null)} okText="保 存" className="tight-form" destroyOnClose
+        onOk={() => {
+          set({ tls: tls && tls.mode ? tls : null })
+          setTls(null)
+        }}
+      >
+        {tls && (
+          <>
+            <Field label="TLS 入站" inline>
+              <Select
+                style={{ width: 200, textAlign: 'left' }} value={tls.mode} onChange={(mode) => setTls({ mode })}
+                options={tlsModes.map((label, value) => ({ value, label }))}
+              />
+            </Field>
+            {tls.mode === 0 && (
+              <Typography.Paragraph type="secondary">
+                未开启时，入口原样转发 TCP 数据。客户端和目标之间的 TLS（如 HTTPS）不受影响，照常透传。
+              </Typography.Paragraph>
+            )}
+            {tls.mode === 1 && (
+              <>
+                <Typography.Paragraph type="secondary">
+                  由入口完成 TLS 握手，再把解密后的流量转发给目标（目标收到的是明文）。只对 TCP 生效。
+                </Typography.Paragraph>
+                <Field label="SNI" tip="只接受带有这些 SNI 的连接，多个用逗号分隔。">
+                  <Input placeholder="example.com" disabled={tls.empty_sni} value={tls.sni} onChange={(e) => setTls({ ...tls, sni: e.target.value })} />
+                </Field>
+                <Field label="不校验 SNI" inline><Switch checked={!!tls.empty_sni} onChange={(v) => setTls({ ...tls, empty_sni: v, force_empty_sni: v && tls.force_empty_sni })} /></Field>
+                <Field label="拒绝带 SNI 的连接" inline><Switch disabled={!tls.empty_sni} checked={!!tls.force_empty_sni} onChange={(v) => setTls({ ...tls, force_empty_sni: v })} /></Field>
+              </>
+            )}
+            {tls.mode === 2 && (
+              <>
+                <Typography.Paragraph type="secondary">
+                  母规则监听本规则的端口，自己不转发，而是按客户端的 SNI 把连接交给引用它的子规则。这样多条规则可以共用一个端口（例如 443）。本规则的目标地址不会被使用。
+                </Typography.Paragraph>
+                <Field label="Uid" tip="允许哪些用户的子规则引用，填用户 ID，多个用逗号分隔；0 或留空表示所有用户。">
+                  <Input placeholder="0" value={tls.uid} onChange={(e) => setTls({ ...tls, uid: e.target.value })} />
+                </Field>
+              </>
+            )}
+            {tls.mode === 3 && (
+              <>
+                <Typography.Paragraph type="secondary">
+                  子规则不监听端口，而是引用同一入口上某个母规则的端口，用 SNI 区分。本规则的"监听端口"只用来标识规则，随意填写即可。
+                </Typography.Paragraph>
+                <Field label="共享 TLS 端口" tip="母规则的端口。">
+                  <InputNumber style={{ width: '100%' }} min={1} max={65535} value={tls.share_port} onChange={(v) => setTls({ ...tls, share_port: v ?? undefined })} />
+                </Field>
+                <Field label="SNI" tip="客户端用这个 SNI 连接母规则的端口时，会被转给本规则。同一个母规则下不能重复。">
+                  <Input placeholder="a.example.com" value={tls.sni} onChange={(e) => setTls({ ...tls, sni: e.target.value })} />
+                </Field>
+              </>
+            )}
+            {(tls.mode === 1 || tls.mode === 3) && (
+              <Collapse
+                items={[
+                  {
+                    key: 'cert',
+                    label: '证书与 ALPN（可选）',
+                    children: (
+                      <>
+                        <Field label="ALPN" tip="不为空时，只接受支持其中之一的客户端。多个用逗号分隔，例如 h2,http/1.1">
+                          <Input value={(tls.alpn ?? []).join(',')} onChange={(e) => setTls({ ...tls, alpn: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} />
+                        </Field>
+                        <Field label="证书 (PEM)" tip="留空则使用节点自动生成的自签证书，客户端需要关闭证书校验。">
+                          <Input.TextArea rows={3} placeholder="-----BEGIN CERTIFICATE-----" value={tls.cert} onChange={(e) => setTls({ ...tls, cert: e.target.value })} />
+                        </Field>
+                        <Field label="私钥 (PEM)">
+                          <Input.TextArea rows={3} placeholder="-----BEGIN PRIVATE KEY-----" value={tls.key} onChange={(e) => setTls({ ...tls, key: e.target.value })} />
+                        </Field>
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </>
+        )}
       </Modal>
 
       <Modal title="批量导入 ⇋" open={importOpen} onOk={runImport} onCancel={() => setImportOpen(false)} width={416} className="tight-form" destroyOnClose>

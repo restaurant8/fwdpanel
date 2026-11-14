@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const panelVersion = "0.5.0"
+const panelVersion = "0.6.0"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.5.0"
+const nodeVersion = "0.6.0"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //

@@ -134,19 +134,22 @@ func (n *Node) host() string {
 
 // Rule 转发规则。OutGroupID 为 0 表示单端转发（入口直连目标）。
 type Rule struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      uint      `gorm:"index" json:"user_id"`
-	Name        string    `gorm:"size:64" json:"name"`
-	GroupID     uint      `json:"group_id"` // 规则分组（RuleGroup），0 表示未分组
-	InGroupID   uint      `gorm:"index" json:"in_group_id"`
-	OutGroupID  uint      `gorm:"index" json:"out_group_id"`
-	ListenPort  int       `json:"listen_port"`
-	Targets     string    `json:"targets"` // 一行一个 host:port
-	LB          string    `gorm:"size:16" json:"lb"`
-	AcceptPP    bool      `json:"accept_pp"`   // 入口先从客户端连接里读 Proxy Protocol 头
-	SendPP      int       `json:"send_pp"`     // 向目标发送 Proxy Protocol：0 关闭，1 = v1，2 = v2
-	IPLimit     int       `json:"ip_limit"`    // 本规则同时在线的来源 IP 数，0 不限
-	ConnLimit   int       `json:"conn_limit"`  // 本规则的并发连接数，0 不限
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	UserID     uint   `gorm:"index" json:"user_id"`
+	Name       string `gorm:"size:64" json:"name"`
+	GroupID    uint   `json:"group_id"` // 规则分组（RuleGroup），0 表示未分组
+	InGroupID  uint   `gorm:"index" json:"in_group_id"`
+	OutGroupID uint   `gorm:"index" json:"out_group_id"`
+	ListenPort int    `json:"listen_port"`
+	Targets    string `json:"targets"` // 一行一个 host:port
+	LB         string `gorm:"size:16" json:"lb"`
+	AcceptPP   bool   `json:"accept_pp"`  // 入口先从客户端连接里读 Proxy Protocol 头
+	SendPP     int    `json:"send_pp"`    // 向目标发送 Proxy Protocol：0 关闭，1 = v1，2 = v2
+	IPLimit    int    `json:"ip_limit"`   // 本规则同时在线的来源 IP 数，0 不限
+	ConnLimit  int    `json:"conn_limit"` // 本规则的并发连接数，0 不限
+	// TLS 入站设置，JSON 存在 TLSConfig 里，读出时解析到 TLS
+	TLSConfig   string    `json:"-"`
+	TLS         *ruleTLS  `gorm:"-" json:"tls"`
 	SpeedLimit  int64     `json:"speed_limit"` // 字节/秒，0 不限
 	Paused      bool      `json:"paused"`
 	TrafficUsed int64     `json:"traffic_used"`
