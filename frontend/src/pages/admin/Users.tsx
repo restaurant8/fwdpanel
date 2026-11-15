@@ -11,7 +11,7 @@ import {
 import dayjs, { Dayjs } from 'dayjs'
 import { api, NamedGroup, Plan, useKV, User } from '../../api'
 import { errMsg, fmtTime, fmtTraffic, GIB, MBPS } from '../../util'
-import { Field, NotWired } from '../../components/ui'
+import { Field } from '../../components/ui'
 import Rules from '../Rules'
 
 interface Draft {
@@ -30,6 +30,7 @@ export default function AdminUsers() {
   const [d, setD] = useState<Draft | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
   const [planOf, setPlanOf] = useState<User | null>(null)
+  const [planPick, setPlanPick] = useState(0)
   const [rulesOf, setRulesOf] = useState<User | null>(null)
   const [searchAll, setSearchAll] = useState(false)
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x!, ...p }))
@@ -108,6 +109,25 @@ export default function AdminUsers() {
         }).then(() => setD(null)),
       '保存成功',
     )
+  const showInvite = async (u: User) => {
+    try {
+      const r = await api<{ code: string; invited: { id: number; username: string }[]; inviter: string; inviter_id: number }>('GET', `/admin/users/${u.id}/invite`)
+      const link = `${window.location.origin}/#/login?invite=${r.code}`
+      modal.info({
+        title: `邀请注册 - ${u.username}`, width: 560,
+        content: (
+          <>
+            <p>邀请链接：</p>
+            <Typography.Paragraph copyable={{ text: link }} style={{ wordBreak: 'break-all' }}>{link}</Typography.Paragraph>
+            <p>邀请人：{r.inviter_id ? `${r.inviter} (#${r.inviter_id})` : '无'}</p>
+            <p>已邀请 {r.invited.length} 人{r.invited.length ? '：' + r.invited.map((x) => `${x.username} (#${x.id})`).join('，') : ''}</p>
+          </>
+        ),
+      })
+    } catch (e) {
+      message.error(errMsg(e))
+    }
+  }
   const clean = (kind: 'users' | 'rules') =>
     modal.confirm({
       title: kind === 'users' ? '清理无效用户' : '清理无效规则',
@@ -127,7 +147,7 @@ export default function AdminUsers() {
       render: (t: string | null) => <span style={t && dayjs(t).isBefore(dayjs()) ? { color: '#722ed1' } : undefined}>{fmtTime(t)}</span>,
     },
     { title: '流量', sorter: num('traffic_used'), render: (_, u) => fmtTraffic(u.traffic_used, u.traffic_limit) },
-    { title: '套餐', render: () => '#0' },
+    { title: '套餐', dataIndex: 'plan_id', render: (id: number) => { const p = plans.value.find((x) => x.id === id); return p ? `${p.name} (#${id})` : `#${id}` } },
     { title: '用户组', dataIndex: 'group_id', filters: ugs.map((g) => ({ text: g.name || `#${g.id}`, value: g.id })), onFilter: (v, u) => u.group_id === v, render: ugLabel },
     { title: '最大规则数', dataIndex: 'max_rules', sorter: num('max_rules') },
     { title: '钱包余额', dataIndex: 'balance', sorter: num('balance'), render: (b: number) => `${b} 元` },
@@ -138,8 +158,8 @@ export default function AdminUsers() {
           {btn('管理规则', <PaperClipOutlined />, () => setRulesOf(u))}
           <Popconfirm title={`重置 ${u.username} 的密码？该用户会被强制下线。`} onConfirm={() => resetPw(u)}>{btn('重置密码', <DisconnectOutlined />)}</Popconfirm>
           {btn('编辑', <EditOutlined />, () => edit(u))}
-          {btn('编辑用户套餐', <ShoppingOutlined />, () => setPlanOf(u))}
-          {btn('邀请注册', <RedEnvelopeOutlined />, () => message.info(NotWired))}
+          {btn('编辑用户套餐', <ShoppingOutlined />, () => { setPlanPick(u.plan_id); setPlanOf(u) })}
+          {btn('邀请注册', <RedEnvelopeOutlined />, () => showInvite(u))}
           <Popconfirm title={`删除用户 ${u.username} 及其全部规则？`} onConfirm={() => run(() => api('DELETE', `/admin/users/${u.id}`))}>{btn('删除', <DeleteOutlined />)}</Popconfirm>
         </Space>
       ),
@@ -195,10 +215,16 @@ export default function AdminUsers() {
         )}
       </Modal>
 
-      <Modal title={planOf ? `编辑用户套餐 ${planOf.username} (UID=${planOf.id})` : ''} open={!!planOf} onCancel={() => setPlanOf(null)} onOk={() => { message.info(NotWired); setPlanOf(null) }} width={416} className="tight-form" destroyOnClose>
+      <Modal
+        title={planOf ? `编辑用户套餐 ${planOf.username} (UID=${planOf.id})` : ''} open={!!planOf} onCancel={() => setPlanOf(null)} width={416} className="tight-form" destroyOnClose
+        onOk={() => planOf && run(() => api('POST', `/admin/users/${planOf.id}/plan`, { plan_id: planPick }).then(() => setPlanOf(null)), '已保存')}
+      >
         <Field label="套餐">
-          <Select style={{ width: '100%' }} defaultValue={0} options={[{ value: 0, label: '无 (#0)' }, ...plans.value.map((p) => ({ value: p.id, label: `${p.name} (#${p.id})` }))]} />
+          <Select style={{ width: '100%' }} value={planPick} onChange={setPlanPick} options={[{ value: 0, label: '无 (#0)' }, ...plans.value.map((p) => ({ value: p.id, label: `${p.name} (#${p.id})` }))]} />
         </Field>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          选择一个套餐会立即把它的用户组、流量、规则数、限速和到期时间应用到这个用户，不扣余额。选"无"只清除套餐标记，不改其他设置。
+        </Typography.Paragraph>
       </Modal>
     </Card>
   )

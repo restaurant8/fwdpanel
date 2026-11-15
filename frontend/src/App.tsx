@@ -33,7 +33,7 @@ interface Ctx {
 const AppCtx = createContext<Ctx>(null!)
 export const useAuth = () => useContext(AppCtx)
 
-const defaultSite: Site = { title: '转发面板', allow_register: false, notice: '', version: '', node_version: '', allow_user_egress: false }
+const defaultSite: Site = { title: '转发面板', allow_register: false, notice: '', version: '', node_version: '', allow_user_egress: false, tg_enabled: false, register_policy: 1 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)

@@ -6,6 +6,7 @@ import { GIB } from '../../util'
 interface Rank { name: string; bytes: number }
 interface Stats {
   users: number; today_bytes: number; yesterday_bytes: number
+  recharge_today: number; recharge_yesterday: number; recharge_month: number; recharge_last_month: number
   user_rank_today: Rank[]; user_rank_yesterday: Rank[]; node_rank_today: Rank[]; node_rank_yesterday: Rank[]
 }
 
@@ -61,11 +62,10 @@ export default function AdminMain() {
     <>
       <Card title="数据一览">
         <Row gutter={[16, 16]}>
-          {/* 充值统计没有接入支付，固定为 0 */}
-          {stat('今日充值', '0.00', 'CNY')}
-          {stat('昨日充值', '0.00', 'CNY')}
-          {stat('本月充值', '0.00', 'CNY')}
-          {stat('上月充值', '0.00', 'CNY')}
+          {stat('今日充值', (s?.recharge_today ?? 0).toFixed(2), 'CNY')}
+          {stat('昨日充值', (s?.recharge_yesterday ?? 0).toFixed(2), 'CNY')}
+          {stat('本月充值', (s?.recharge_month ?? 0).toFixed(2), 'CNY')}
+          {stat('上月充值', (s?.recharge_last_month ?? 0).toFixed(2), 'CNY')}
           {stat('今日单向流量', gib(s?.today_bytes), 'GiB')}
           {stat('昨日单向流量', gib(s?.yesterday_bytes), 'GiB')}
           {stat('总用户', s?.users ?? 0)}

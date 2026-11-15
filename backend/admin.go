@@ -87,7 +87,17 @@ func handleAdminStats(c *gin.Context) {
 	}
 	var users int64
 	db.Model(&User{}).Count(&users)
+	// 充值统计：已完成的充值订单，按到账时间
+	recharge := func(from, to time.Time) (v float64) {
+		db.Model(&Order{}).Where("type = ? AND status = ? AND paid_at >= ? AND paid_at < ?", "充值", "已完成", from, to).
+			Select("COALESCE(SUM(amount),0)").Scan(&v)
+		return
+	}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	c.JSON(200, gin.H{"users": users, "today_bytes": sum(today), "yesterday_bytes": sum(yesterday),
+		"recharge_today": recharge(day, day.AddDate(0, 0, 1)), "recharge_yesterday": recharge(day.AddDate(0, 0, -1), day),
+		"recharge_month": recharge(month, month.AddDate(0, 1, 0)), "recharge_last_month": recharge(month.AddDate(0, -1, 0), month),
 		"user_rank_today": userRank(today), "user_rank_yesterday": userRank(yesterday),
 		"node_rank_today": groupRank(today), "node_rank_yesterday": groupRank(yesterday)})
 }
@@ -800,4 +810,18 @@ func freeTunnelPort() int {
 			return p
 		}
 	}
+}
+
+// handleAdminSetGroupCat 把选中的设备组放进某个分组（0 表示未分组）。分组列表保存在设置项 dg_cats 里。
+func handleAdminSetGroupCat(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids"`
+		Cat uint   `json:"cat"`
+	}
+	if c.ShouldBindJSON(&req) != nil || len(req.IDs) == 0 {
+		fail(c, 400, "请求格式错误")
+		return
+	}
+	db.Model(&DeviceGroup{}).Where("id IN ?", req.IDs).Update("cat_id", req.Cat)
+	c.JSON(200, gin.H{"ok": true})
 }

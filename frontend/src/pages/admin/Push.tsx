@@ -19,7 +19,7 @@ function Secs(props: { on: boolean; value: number | null; placeholder?: string; 
   )
 }
 
-// 推送通知只保存设置，没有实际发送 Telegram 消息。
+// 保存时面板会校验 Bot Token 并向 Telegram 注册 Webhook。
 export default function AdminPush() {
   const { message } = AntApp.useApp()
   const kv = useKV<PushCfg>('push', { tg_enabled: false, bot_token: '', webhook: '', grace_on: true, grace: 60, keep_on: false, keep: null, overrides: {} })
@@ -31,8 +31,8 @@ export default function AdminPush() {
   }, [])
   const save = async () => {
     try {
-      await kv.save(v)
-      message.success('保存成功（推送功能尚未接入，仅保存设置）')
+      const r = await api<{ msg: string }>('PUT', '/admin/push', v)
+      message.success(r.msg)
     } catch (e) {
       message.error(errMsg(e))
     }

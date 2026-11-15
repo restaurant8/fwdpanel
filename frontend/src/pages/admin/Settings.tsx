@@ -117,13 +117,18 @@ export default function AdminSettings() {
         {saveBtn(() => pay.save(pay.value))}
       </Card>
 
-      <Card title="邀请设置 (定制功能，暂未实现，仅保存)">
+      <Card title="邀请设置">
         {([['enabled', '启用邀请注册'], ['loop', '循环返佣'], ['force_tg', '强制绑定 Telegram']] as const).map(([k, label]) => (
           <div key={k} className="setting-row">
             <div className="name">{label}</div>
             <Switch checked={invite.value[k]} onChange={(v) => invite.setValue({ ...invite.value, [k]: v })} />
           </div>
         ))}
+        <div className="quote">
+          启用后，用户可以在个人中心拿到邀请链接；被邀请的用户充值到账时，邀请人按返佣比例获得余额。
+          循环返佣关闭时只对被邀请人的第一笔充值返利。强制绑定 Telegram 开启时，邀请人必须关联了 Telegram 才能拿到返利。
+          上方「邀请注册策略」为"不允许邀请注册"时，邀请功能不生效。
+        </div>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>返佣比例 (%)</div>
         <InputNumber style={{ width: '100%', marginBottom: 14 }} min={0} max={100} formatter={(v) => `${v}%`} parser={(v) => Number((v || '').replace('%', ''))} value={invite.value.rate} onChange={(v) => invite.setValue({ ...invite.value, rate: v ?? 0 })} />
         {saveBtn(() => invite.save(invite.value))}

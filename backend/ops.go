@@ -17,7 +17,7 @@ import (
 )
 
 var allModels = []any{&User{}, &UserGroup{}, &DeviceGroup{}, &Node{}, &Rule{}, &RuleGroup{}, &KV{},
-	&GroupTrafficDaily{}, &Session{}, &TrafficDaily{}}
+	&GroupTrafficDaily{}, &Session{}, &TrafficDaily{}, &Order{}}
 
 // openDB 按连接串打开数据库：
 //
@@ -124,7 +124,7 @@ func cliCopyDatabase(dsn string) {
 	}{
 		{"用户", copyTable[User]}, {"用户组", copyTable[UserGroup]}, {"设备组", copyTable[DeviceGroup]},
 		{"节点", copyTable[Node]}, {"规则", copyTable[Rule]}, {"规则分组", copyTable[RuleGroup]},
-		{"设置", copyTable[KV]}, {"设备组流量", copyTable[GroupTrafficDaily]}, {"用户流量", copyTable[TrafficDaily]},
+		{"设置", copyTable[KV]}, {"订单", copyTable[Order]}, {"设备组流量", copyTable[GroupTrafficDaily]}, {"用户流量", copyTable[TrafficDaily]},
 	}
 	for _, s := range steps {
 		if err := s.run(dst); err != nil {
@@ -134,7 +134,7 @@ func cliCopyDatabase(dsn string) {
 	}
 	if dst.Dialector.Name() == "postgres" {
 		// 数据是带着原来的 ID 写进去的，PostgreSQL 的自增序号不会跟着走，要手动拨到最大值之后
-		for _, t := range []string{"users", "user_groups", "device_groups", "nodes", "rules", "rule_groups"} {
+		for _, t := range []string{"users", "user_groups", "device_groups", "nodes", "rules", "rule_groups", "orders"} {
 			dst.Exec(fmt.Sprintf(`SELECT setval(pg_get_serial_sequence('%s','id'), COALESCE((SELECT MAX(id) FROM %s), 1))`, t, t))
 		}
 	}

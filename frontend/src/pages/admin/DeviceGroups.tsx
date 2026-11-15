@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  App as AntApp, Button, Card, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag,
+  App as AntApp, Button, Card, Drawer, Dropdown, FloatButton, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag,
   Tooltip, Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   BugOutlined, CloudDownloadOutlined, CopyOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, FileAddOutlined,
-  FireOutlined, HolderOutlined, MinusCircleOutlined, PlusOutlined, SettingOutlined, SyncOutlined,
+  FireOutlined, FolderAddOutlined, HolderOutlined, MinusCircleOutlined, PlusOutlined, SettingOutlined, SyncOutlined,
 } from '@ant-design/icons'
-import { AdminGroup, api, directPolicyText, GroupType, groupTypeText } from '../../api'
+import { AdminGroup, api, directPolicyText, GroupType, groupTypeText, useKV } from '../../api'
 import { copyText, errMsg, fmtGiB, parseIds } from '../../util'
-import { Field, NotWired } from '../../components/ui'
+import { Field } from '../../components/ui'
 
 interface Draft {
   id?: number; name: string; ugs: string; ratio: number; type?: GroupType; note: string; hide_in_status: number
@@ -33,6 +33,13 @@ export default function AdminDeviceGroups() {
   const [d, setD] = useState<Draft | null>(null)
   const [adv, setAdv] = useState<{ g: AdminGroup; text: string } | null>(null)
   const [offline, setOffline] = useState<AdminGroup | null>(null)
+  // 设备组分组：只用于在这个页面里整理和筛选
+  const cats = useKV<{ id: number; name: string }[]>('dg_cats', [])
+  const [cat, setCat] = useState<number | 'all'>('all')
+  const [catsOpen, setCatsOpen] = useState(false)
+  const [newCat, setNewCat] = useState('')
+  const [moveTo, setMoveTo] = useState<number | null>(null)
+  const inCat = (id: number) => groups.filter((g) => (g.cat_id || 0) === id).length
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x!, ...p }))
 
   const load = useCallback(async () => {
@@ -190,14 +197,17 @@ export default function AdminDeviceGroups() {
           清空流量
         </Button>
         <Button icon={<SyncOutlined />} onClick={() => { setLoading(true); load() }}>刷新</Button>
-        <Button size="small" type="dashed" icon={<SettingOutlined />} onClick={() => message.info('设备组分组' + NotWired.slice(3))}>管理分组</Button>
+        <Button size="small" type="dashed" icon={<SettingOutlined />} onClick={() => setCatsOpen(true)}>管理分组</Button>
         <span>
-          <Tag.CheckableTag checked>全部</Tag.CheckableTag>
-          <Tag.CheckableTag checked={false}>未分组 ({groups.length})</Tag.CheckableTag>
+          <Tag.CheckableTag checked={cat === 'all'} onChange={() => setCat('all')}>全部</Tag.CheckableTag>
+          <Tag.CheckableTag checked={cat === 0} onChange={() => setCat(0)}>未分组 ({inCat(0)})</Tag.CheckableTag>
+          {cats.value.map((c) => (
+            <Tag.CheckableTag key={c.id} checked={cat === c.id} onChange={() => setCat(c.id)}>{c.name} ({inCat(c.id)})</Tag.CheckableTag>
+          ))}
         </span>
       </Space>
       <Table
-        rowKey="id" loading={loading} dataSource={groups} columns={columns} pagination={false} scroll={{ x: 'max-content' }}
+        rowKey="id" loading={loading} dataSource={cat === 'all' ? groups : groups.filter((g) => (g.cat_id || 0) === cat)} columns={columns} pagination={false} scroll={{ x: 'max-content' }}
         rowSelection={{ selectedRowKeys: selected, onChange: (k) => setSelected(k as number[]) }}
       />
 
@@ -331,6 +341,42 @@ export default function AdminDeviceGroups() {
           {adv?.g.type !== 'in' && adv?.g.type !== 'out' && '这种类型的设备组没有高级设置。'}
         </Typography.Paragraph>
       </Modal>
+
+      <FloatButton
+        shape="square" icon={<FolderAddOutlined />} description="分组" style={{ insetInlineEnd: 24, insetBlockEnd: 48 }}
+        onClick={() => (selected.length ? setMoveTo(0) : message.info('请先勾选设备组'))}
+      />
+      <Modal
+        title={`把选中的 ${selected.length} 个设备组移动到`} open={moveTo !== null} onCancel={() => setMoveTo(null)} width={416} destroyOnClose
+        onOk={() => run(() => api('POST', '/admin/groups/set_cat', { ids: selected, cat: moveTo }).then(() => { setMoveTo(null); setSelected([]) }))}
+      >
+        <Select style={{ width: '100%' }} value={moveTo ?? 0} onChange={setMoveTo} options={[{ value: 0, label: '未分组' }, ...cats.value.map((c) => ({ value: c.id, label: c.name }))]} />
+      </Modal>
+      <Drawer title="分组管理" open={catsOpen} onClose={() => setCatsOpen(false)} width={300}>
+        <Card title="现有分组列表" size="small" style={{ marginBottom: 16 }}>
+          {!cats.value.length && <Typography.Text type="secondary">暂无数据</Typography.Text>}
+          {cats.value.map((c) => (
+            <div key={c.id} style={{ display: 'flex', padding: '4px 0' }}>
+              <span style={{ flex: 1 }}>{c.name} ({inCat(c.id)})</span>
+              <Popconfirm title="删除分组？组内设备组会回到未分组。" onConfirm={() => run(async () => {
+                const ids = groups.filter((g) => g.cat_id === c.id).map((g) => g.id)
+                if (ids.length) await api('POST', '/admin/groups/set_cat', { ids, cat: 0 })
+                await cats.save(cats.value.filter((x) => x.id !== c.id))
+              })}>
+                <a style={{ color: '#ff4d4f' }}>删除</a>
+              </Popconfirm>
+            </div>
+          ))}
+        </Card>
+        <div style={{ fontSize: 12, marginBottom: 6 }}>新增分组</div>
+        <Input placeholder="请输入分组名称" value={newCat} onChange={(e) => setNewCat(e.target.value)} maxLength={64} />
+        <Button
+          type="primary" style={{ margin: '10px 0 24px' }} disabled={!newCat.trim()}
+          onClick={() => run(() => cats.save([...cats.value, { id: Math.max(0, ...cats.value.map((x) => x.id)) + 1, name: newCat.trim() }]).then(() => setNewCat('')))}
+        >
+          添 加
+        </Button>
+      </Drawer>
 
       <Modal title="离线部署" open={!!offline} onCancel={() => setOffline(null)} footer={null} width={600}>
         {offline && (

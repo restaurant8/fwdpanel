@@ -8,23 +8,31 @@ import (
 
 // User 面板用户。流量单位均为字节，TrafficLimit 为 0 表示不限。
 type User struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	Username     string     `gorm:"uniqueIndex;size:64" json:"username"`
-	PasswordHash string     `json:"-"`
-	Admin        bool       `json:"admin"`
-	Enabled      bool       `json:"enabled"`
-	TrafficLimit int64      `json:"traffic_limit"`
-	TrafficUsed  int64      `json:"traffic_used"`
-	MaxRules     int        `json:"max_rules"`
-	GroupID      uint       `json:"group_id"`    // 用户组，0 表示未分组
-	SpeedLimit   int64      `json:"speed_limit"` // 字节/秒，0 不限；每个入口节点、每个方向单独计算
-	IPLimit      int        `json:"ip_limit"`    // 同时在线的来源 IP 数，0 不限；每个入口节点单独计算
-	ConnLimit    int        `json:"conn_limit"`  // 并发连接数，0 不限；每个入口节点单独计算
-	Balance      float64    `json:"balance"`     // 钱包余额（元）
-	Note         string     `json:"note"`        // 备注，仅管理员可见
-	AutoRenew    bool       `json:"auto_renew"`
-	ExpireAt     *time.Time `json:"expire_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID           uint    `gorm:"primaryKey" json:"id"`
+	Username     string  `gorm:"uniqueIndex;size:64" json:"username"`
+	PasswordHash string  `json:"-"`
+	Admin        bool    `json:"admin"`
+	Enabled      bool    `json:"enabled"`
+	TrafficLimit int64   `json:"traffic_limit"`
+	TrafficUsed  int64   `json:"traffic_used"`
+	MaxRules     int     `json:"max_rules"`
+	GroupID      uint    `json:"group_id"`    // 用户组，0 表示未分组
+	SpeedLimit   int64   `json:"speed_limit"` // 字节/秒，0 不限；每个入口节点、每个方向单独计算
+	IPLimit      int     `json:"ip_limit"`    // 同时在线的来源 IP 数，0 不限；每个入口节点单独计算
+	ConnLimit    int     `json:"conn_limit"`  // 并发连接数，0 不限；每个入口节点单独计算
+	Balance      float64 `json:"balance"`     // 钱包余额（元）
+	Note         string  `json:"note"`        // 备注，仅管理员可见
+	AutoRenew    bool    `json:"auto_renew"`
+	PlanID       uint    `json:"plan_id"` // 当前套餐，0 表示没有
+	// 邀请：自己的邀请码、邀请人
+	InviteCode string `gorm:"size:16;index" json:"-"`
+	InviterID  uint   `json:"inviter_id"`
+	// Telegram：绑定的聊天 ID（0 表示未绑定）、待使用的绑定码、是否关闭推送
+	TGChatID   int64      `json:"tg_chat_id"`
+	TGBindCode string     `gorm:"size:16" json:"-"`
+	PushOff    bool       `json:"push_off"`
+	ExpireAt   *time.Time `json:"expire_at"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // usable 判断用户的规则当前是否允许下发到节点。
@@ -81,6 +89,8 @@ type DeviceGroup struct {
 	UDPSmartBind bool   `json:"udp_smart_bind"` // UDP 源进源出（目前只保存）
 	// HideInStatus 在节点状态页隐藏：0 不隐藏，1 对非管理员隐藏，2 对所有人隐藏
 	HideInStatus int `json:"hide_in_status"`
+	// CatID 是设备组所属的分组（只用于在管理页面里整理和筛选），0 表示未分组
+	CatID uint `json:"cat_id"`
 	// OwnerID 不为 0 表示这是用户自带的出口，只有这个用户自己能用
 	OwnerID uint `json:"owner_id"`
 	// Config 是「高级编辑」保存的 JSON，见 groupConfig

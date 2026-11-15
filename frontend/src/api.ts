@@ -58,6 +58,10 @@ export interface User {
   balance: number
   note: string
   auto_renew: boolean
+  plan_id: number
+  tg_chat_id: number
+  push_off: boolean
+  inviter_id: number
   expire_at: string | null
   created_at: string
 }
@@ -114,6 +118,7 @@ export interface AdminGroup {
   hops: number[]
   config: string
   owner_id: number
+  cat_id: number
 }
 
 export interface NamedGroup {
@@ -198,6 +203,8 @@ export interface Site {
   version: string
   node_version: string
   allow_user_egress: boolean
+  tg_enabled: boolean
+  register_policy: number
 }
 
 export interface Plan {

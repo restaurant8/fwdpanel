@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App as AntApp, Button, Card, Input, Popconfirm, Space, Switch, Typography } from 'antd'
 import { DisconnectOutlined, LinkOutlined, LockOutlined, PlusCircleOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons'
-import { api, NamedGroup } from '../api'
+import { api, NamedGroup, Plan } from '../api'
 import { useAuth } from '../App'
 import { copyText, errMsg, fmtTime, fmtTraffic } from '../util'
-import { NotWired } from '../components/ui'
 
 export default function UserInfo() {
   const { user, site, reload } = useAuth()
@@ -15,6 +14,9 @@ export default function UserInfo() {
   const [pw, setPw] = useState({ old: '', next: '', again: '' })
   const [egress, setEgress] = useState<{ id: number; name: string; token: string; online: number }[]>([])
   const [egressName, setEgressName] = useState('')
+  const [plan, setPlan] = useState<Plan | null>(null)
+  const [inv, setInv] = useState<{ enabled: boolean; code: string; invited: number; rate: number } | null>(null)
+  const inviteLink = inv ? `${window.location.origin}/#/login?invite=${inv.code}` : ''
   const canEgress = site.allow_user_egress || user.admin
   const loadEgress = () => api('GET', '/user/egress').then(setEgress).catch(() => {})
   const egressCmd = (token: string) =>
@@ -23,6 +25,8 @@ export default function UserInfo() {
   useEffect(() => {
     reload().then(() => message.success('刷新用户信息成功'))
     loadEgress()
+    api<{ my_plan: Plan | null }>('GET', '/shop').then((r) => setPlan(r.my_plan)).catch(() => {})
+    api('GET', '/user/invite').then(setInv).catch(() => {})
     // 用户组名称只有管理员接口能查；普通用户显示组 ID
     if (user.admin)
       api<NamedGroup[]>('GET', '/admin/usergroups')
@@ -31,7 +35,35 @@ export default function UserInfo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const todo = () => message.info(NotWired)
+  const act = (fn: () => Promise<unknown>, ok: string) => fn().then(() => { message.success(ok); reload() }, (e) => message.error(errMsg(e)))
+  const periodic = plan && (plan.type === '月付' || plan.type === '日付')
+  const renew = () =>
+    modal.confirm({
+      title: `续费套餐「${plan?.name}」？`,
+      content: `将从钱包余额扣除 ${plan?.price} 元（当前余额 ${user.balance} 元），到期时间顺延一个周期，已用流量清零。`,
+      onOk: () => act(() => api('POST', '/shop/renew'), '续费成功'),
+    })
+  const bindTG = async () => {
+    try {
+      const r = await api<{ code: string; bot: string }>('POST', '/user/telegram/bind')
+      modal.info({
+        title: '关联 Telegram', width: 520, okText: '我已发送',
+        onOk: () => reload(),
+        content: (
+          <>
+            <p>
+              打开机器人 <a href={`https://t.me/${r.bot}?start=${r.code}`} target="_blank" rel="noreferrer">@{r.bot}</a> 并点击"开始"，
+              或者手动给它发送下面这条消息：
+            </p>
+            <Typography.Paragraph copyable code>{`/bind ${r.code}`}</Typography.Paragraph>
+            <p>机器人回复"已关联"后，回到这里点"我已发送"。</p>
+          </>
+        ),
+      })
+    } catch (e) {
+      message.error(errMsg(e))
+    }
+  }
 
   const resetPw = async () => {
     if (pw.next !== pw.again) return message.error('两次输入的新密码不一致')
@@ -70,24 +102,43 @@ export default function UserInfo() {
         {row('用户名', user.username)}
         {row('用户类型', user.admin ? '管理员' : '普通用户')}
         {row('用户组', groupName || `#${user.group_id}`)}
-        {row('套餐', '#0')}
+        {row('套餐', plan ? `${plan.name} (#${plan.id})` : `#${user.plan_id}`)}
         {row('套餐失效', fmtTime(user.expire_at))}
-        {row('续费价格', '0 元', <Button icon={<SyncOutlined />} onClick={todo}>立即续费</Button>)}
+        {row('续费价格', `${periodic ? plan!.price : 0} 元`, <Button icon={<SyncOutlined />} disabled={!periodic} onClick={renew}>立即续费</Button>)}
         {row('流量', fmtTraffic(user.traffic_used, user.traffic_limit))}
         {row('最大规则数', user.max_rules || '不限')}
         {row('钱包余额', `${user.balance} 元`, <Button icon={<PlusCircleOutlined />} onClick={() => nav('/shop')}>充值</Button>)}
         {row(
           'Telegram 关联',
-          '0',
+          user.tg_chat_id || 0,
           <>
-            <Button icon={<LinkOutlined />} onClick={todo}>关联</Button>
-            <Button danger icon={<DisconnectOutlined />} onClick={todo}>取消关联</Button>
+            <Button icon={<LinkOutlined />} disabled={!site.tg_enabled} onClick={bindTG}>关联</Button>
+            <Button danger icon={<DisconnectOutlined />} disabled={!user.tg_chat_id} onClick={() => act(() => api('POST', '/user/telegram/unbind'), '已取消关联')}>取消关联</Button>
           </>,
         )}
-        <div className="info-row" style={{ marginBottom: 0 }}>
+        <div className="info-row" style={{ marginBottom: inv?.enabled ? 14 : 0 }}>
           <b>推送信息</b>
-          <Button icon={<SettingOutlined />} onClick={todo}>设置</Button>
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() =>
+              modal.confirm({
+                title: '推送信息设置',
+                content: `关联 Telegram 后，套餐即将到期、流量用尽、邀请返利到账时会收到提醒。当前状态：${user.push_off ? '已关闭' : '已开启'}。`,
+                okText: user.push_off ? '开启推送' : '关闭推送', cancelText: '保持不变',
+                onOk: () => act(() => api('POST', '/user/push', { off: !user.push_off }), '已保存'),
+              })
+            }
+          >
+            设置
+          </Button>
         </div>
+        {inv?.enabled && (
+          <div className="info-row" style={{ marginBottom: 0 }}>
+            <b>邀请链接</b>
+            <Typography.Text copyable={{ text: inviteLink }} style={{ wordBreak: 'break-all' }}>{inviteLink}</Typography.Text>
+            <span>已邀请 {inv.invited} 人，返利 {inv.rate}%</span>
+          </div>
+        )}
       </Card>
       {(canEgress || egress.length > 0) && (
         <Card title="自带出口（单端隧道）">

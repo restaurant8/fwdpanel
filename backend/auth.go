@@ -101,7 +101,10 @@ func handleRegister(c *gin.Context) {
 		fail(c, 403, "本站未开放注册")
 		return
 	}
-	var req credReq
+	var req struct {
+		credReq
+		Invite string `json:"invite"`
+	}
 	if c.ShouldBindJSON(&req) != nil {
 		fail(c, 400, "请求格式错误")
 		return
@@ -110,7 +113,12 @@ func handleRegister(c *gin.Context) {
 		fail(c, 400, msg)
 		return
 	}
-	u := User{Username: req.Username, PasswordHash: hashPassword(req.Password), Enabled: true}
+	inviter, ok, msg := resolveInviter(strings.TrimSpace(req.Invite))
+	if !ok {
+		fail(c, 403, msg)
+		return
+	}
+	u := User{Username: req.Username, PasswordHash: hashPassword(req.Password), Enabled: true, InviterID: inviter}
 	if db.Create(&u).Error != nil {
 		fail(c, 409, "用户名已存在")
 		return

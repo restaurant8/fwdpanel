@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const panelVersion = "0.7.0"
+const panelVersion = "0.8.0"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
 const nodeVersion = "0.7.0"
@@ -19,7 +19,7 @@ const nodeVersion = "0.7.0"
 //
 // 这些设置目前只做保存和展示：支付通道、套餐、兑换码、邀请、Telegram 推送都没有接入实际业务。
 
-var kvKeys = map[string]bool{"site": true, "pay": true, "plans": true, "redeem": true, "invite": true, "push": true}
+var kvKeys = map[string]bool{"site": true, "pay": true, "plans": true, "redeem": true, "invite": true, "push": true, "dg_cats": true}
 
 func getKV(key string, into any) bool {
 	var kv KV
@@ -57,6 +57,11 @@ func handleAdminPutKV(c *gin.Context) {
 	c.JSON(200, gin.H{"ok": true})
 }
 
+func saveKV(key string, v any) {
+	raw, _ := json.Marshal(v)
+	db.Save(&KV{Key: key, Value: string(raw)})
+}
+
 // siteSettings 是「站点设置 - 基本」和公告。只有 title、allow_register、notice 实际生效。
 type siteSettings struct {
 	Title          string `json:"title"`
@@ -65,6 +70,8 @@ type siteSettings struct {
 	DiagnoseHideIP int    `json:"diagnose_hide_ip"`
 	// 允许用户自带出口（单端隧道）
 	AllowUserEgress bool `json:"allow_user_egress"`
+	// 邀请注册策略：0 无限制，1 不允许邀请注册，2 仅开放邀请注册
+	RegisterPolicy int `json:"register_policy"`
 }
 
 func loadSite() siteSettings {
@@ -88,16 +95,21 @@ func registerAllowed() bool {
 func handleSite(c *gin.Context) {
 	s := loadSite()
 	c.JSON(200, gin.H{"title": s.Title, "allow_register": registerAllowed(), "notice": s.Notice,
-		"allow_user_egress": s.AllowUserEgress, "version": panelVersion, "node_version": nodeVersion, "diagnose_hide_ip": s.DiagnoseHideIP})
+		"allow_user_egress": s.AllowUserEgress, "register_policy": s.RegisterPolicy,
+		"tg_enabled": loadPush().TGEnabled, "version": panelVersion, "node_version": nodeVersion, "diagnose_hide_ip": s.DiagnoseHideIP})
 }
 
 // handleShop 返回商城页需要的数据：未隐藏的套餐、已启用的支付通道名称、最小充值金额。
 func handleShop(c *gin.Context) {
-	var plans []map[string]any
-	getKV("plans", &plans)
-	shown := []map[string]any{}
-	for _, p := range plans {
-		if hidden, _ := p["hidden"].(bool); !hidden {
+	u := me(c)
+	shown := []plan{}
+	var mine *plan
+	for _, p := range loadPlans() {
+		if p.ID == u.PlanID {
+			pp := p
+			mine = &pp
+		}
+		if !p.Hidden {
 			shown = append(shown, p)
 		}
 	}
@@ -116,7 +128,8 @@ func handleShop(c *gin.Context) {
 			names = append(names, ch.Name)
 		}
 	}
-	c.JSON(200, gin.H{"plans": shown, "channels": names, "min_recharge": pay.MinRecharge})
+	// my_plan 是用户当前的套餐（即使已被隐藏），用来显示名称和续费价格
+	c.JSON(200, gin.H{"plans": shown, "channels": names, "min_recharge": pay.MinRecharge, "my_plan": mine})
 }
 
 func handleAutoRenew(c *gin.Context) {

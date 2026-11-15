@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { App as AntApp, Button, Card, Form, Input, Tabs } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { api, setToken, Site } from '../api'
@@ -8,13 +8,16 @@ import { errMsg } from '../util'
 export default function Login({ site, onLogin }: { site: Site; onLogin: () => Promise<void> }) {
   const { message } = AntApp.useApp()
   const nav = useNavigate()
-  const [mode, setMode] = useState('login')
+  const [params] = useSearchParams()
+  const invite = params.get('invite') ?? ''
+  // 带着邀请码进来的，默认停在注册页
+  const [mode, setMode] = useState(invite ? 'register' : 'login')
   const [busy, setBusy] = useState(false)
 
   const submit = async (v: { username: string; password: string }) => {
     setBusy(true)
     try {
-      const r = await api<{ token: string }>('POST', `/auth/${mode}`, v)
+      const r = await api<{ token: string }>('POST', `/auth/${mode}`, mode === 'register' ? { ...v, invite } : v)
       setToken(r.token)
       await onLogin()
       nav('/')
