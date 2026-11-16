@@ -121,22 +121,35 @@ scripts/     build.sh 构建，demo.sh 本机演示
 
 ## 部署
 
-### 1. 构建（在开发机上，一条命令）
+### 1. 安装面板（在面板服务器上，一条命令）
+
+不需要自己编译。以 root 运行：
 
 ```bash
-scripts/build.sh
+bash <(curl -fLSs https://github.com/restaurant8/fwdpanel/releases/latest/download/install.sh)
 ```
 
-产物在 `release/`：`fwdpanel_linux_amd64.tar.gz` 和 `fwdpanel_linux_arm64.tar.gz`。
-面板是**单个可执行文件**，前端页面和三种架构的节点端安装包都已内嵌在里面。
+脚本会按机器架构（amd64 / arm64）从 GitHub Releases 下载最新的发布包并安装。后面可以直接跟参数，例如 `... install.sh) -domain 你的域名`。
+升级也是再运行一次这条命令。`VERSION=v0.9.0` 可安装指定版本。
 
-### 2. 安装面板（在面板服务器上）
-
-把对应架构的发布包传到服务器，然后：
+服务器连不上 GitHub 时，在 Releases 页面下载对应架构的包传上去，然后：
 
 ```bash
 tar xzf fwdpanel_linux_amd64.tar.gz && cd fwdpanel && bash install.sh -domain 你的域名
 ```
+
+### 2. 发布新版本（维护者）
+
+推送一个 `v` 开头的标签，GitHub Actions（`.github/workflows/release.yml`）会自动构建并发布到 Releases：
+
+```bash
+git tag v0.9.0 && git push origin v0.9.0
+```
+
+面板是**单个可执行文件**，前端页面和三种架构的节点端安装包都已内嵌在里面。
+想在本机自己构建时运行 `scripts/build.sh`，产物在 `release/`。
+
+安装脚本的说明：
 
 - 不带参数时是**引导模式**，会一步步询问用域名还是端口；带参数则不提问，适合自动化。
 - `-domain 域名`：自动申请并续期 HTTPS 证书，监听 443/80。域名需要已解析到这台服务器。使用此参数即表示同意 Let's Encrypt 的服务条款。

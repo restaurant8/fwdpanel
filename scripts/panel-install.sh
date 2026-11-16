@@ -1,9 +1,14 @@
 #!/bin/bash
-# 面板一键安装。把发布包解压后，在目录里以 root 运行：
+# 面板一键安装，以 root 运行。两种用法：
+#   在线:  bash <(curl -fLSs https://github.com/restaurant8/fwdpanel/releases/latest/download/install.sh)
+#          自动从 GitHub Releases 下载最新的发布包，不需要自己编译。
+#   离线:  把发布包解压后，在目录里运行 bash install.sh
+# 两种用法的参数相同：
 #   bash install.sh                         # 引导模式：一步步询问域名或端口
 #   bash install.sh -port 9000              # 不提问，HTTP，监听指定端口
 #   bash install.sh -domain ny.example.com  # 不提问，自动申请 HTTPS 证书，监听 443/80（域名需已解析到本机）
 # 已经装过时不带参数再运行一次即为升级：只替换程序，保留数据和原来的域名/端口。
+# 环境变量（仅在线安装）：REPO=用户/仓库 换下载来源；VERSION=v0.9.0 安装指定版本（默认最新）。
 set -e
 
 PORT=""
@@ -19,8 +24,18 @@ done
 
 [ "$(id -u)" = "0" ] || { echo "请用 root 运行"; exit 1; }
 command -v systemctl >/dev/null || { echo "需要 systemd"; exit 1; }
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "$SRC/panel" ] || { echo "找不到 panel 程序，请在解压出的目录里运行"; exit 1; }
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+ONLINE=0
+if [ -z "$SRC" ] || [ ! -f "$SRC/panel" ]; then
+  # 脚本旁边没有 panel 程序：在线安装，稍后从 GitHub Releases 下载
+  ONLINE=1
+  case "$(uname -m)" in
+    x86_64 | amd64) ARCH=amd64 ;;
+    aarch64 | arm64) ARCH=arm64 ;;
+    *) echo "不支持的架构: $(uname -m)"; exit 1 ;;
+  esac
+  command -v curl >/dev/null || { echo "需要 curl"; exit 1; }
+fi
 
 UNIT=/etc/systemd/system/fwdpanel.service
 ask() { # 提示语 默认值 -> 用户输入（回车取默认值）
@@ -57,6 +72,27 @@ elif [ "$ARGC" = "0" ] && [ -t 0 ]; then
   [ "$(ask '确认安装？[Y/n] ' y)" = "n" ] && { echo "已取消"; exit 0; }
 fi
 [ -z "$DOMAIN" ] && [ -z "$PORT" ] && PORT=8080
+
+if [ "$ONLINE" = "1" ]; then
+  REPO="${REPO:-restaurant8/fwdpanel}"
+  PKG="fwdpanel_linux_$ARCH.tar.gz"
+  if [ -n "${VERSION:-}" ]; then
+    BASE="https://github.com/$REPO/releases/download/$VERSION"
+  else
+    BASE="https://github.com/$REPO/releases/latest/download"
+  fi
+  TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP"' EXIT
+  echo "正在下载 $PKG（${VERSION:-最新版本}）..."
+  curl -fL --retry 3 -o "$TMP/$PKG" "$BASE/$PKG" || { echo "下载失败: $BASE/$PKG"; exit 1; }
+  # 有校验文件就核对一下，防止下载不完整
+  if curl -fsL --retry 3 -o "$TMP/sha256sums.txt" "$BASE/sha256sums.txt" && command -v sha256sum >/dev/null; then
+    (cd "$TMP" && grep " $PKG\$" sha256sums.txt | sha256sum -c --quiet -) || { echo "校验失败，下载的文件可能不完整，请重试"; exit 1; }
+  fi
+  tar xzf "$TMP/$PKG" -C "$TMP"
+  SRC="$TMP/fwdpanel"
+  [ -f "$SRC/panel" ] || { echo "发布包内容不对，找不到 panel 程序"; exit 1; }
+fi
 
 DIR=/opt/fwdpanel
 mkdir -p "$DIR/data"

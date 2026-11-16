@@ -1,0 +1,44 @@
+# 自动打包：推送 v 开头的标签（例如 v0.9.0）时构建并发布到 GitHub Releases。
+# 也可以在 Actions 页面手动运行，此时只构建、把产物作为 artifact 保存，不发布。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            nodeclient/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build
+        run: |
+          bash scripts/build.sh
+          cp scripts/panel-install.sh release/install.sh
+          (cd release && sha256sum fwdpanel_linux_*.tar.gz > sha256sums.txt && cat sha256sums.txt)
+      - name: Upload artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fwdpanel
+          path: release/*
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes
