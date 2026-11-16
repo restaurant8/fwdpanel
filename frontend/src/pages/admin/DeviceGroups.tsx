@@ -11,6 +11,7 @@ import {
 import { AdminGroup, api, directPolicyText, GroupType, groupTypeText, useKV } from '../../api'
 import { copyText, errMsg, fmtGiB, parseIds } from '../../util'
 import { Field } from '../../components/ui'
+import GroupAdvanced from './GroupAdvanced'
 
 interface Draft {
   id?: number; name: string; ugs: string; ratio: number; type?: GroupType; note: string; hide_in_status: number
@@ -31,7 +32,7 @@ export default function AdminDeviceGroups() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<number[]>([])
   const [d, setD] = useState<Draft | null>(null)
-  const [adv, setAdv] = useState<{ g: AdminGroup; text: string } | null>(null)
+  const [adv, setAdv] = useState<AdminGroup | null>(null)
   const [offline, setOffline] = useState<AdminGroup | null>(null)
   // 设备组分组：只用于在这个页面里整理和筛选
   const cats = useKV<{ id: number; name: string }[]>('dg_cats', [])
@@ -155,12 +156,9 @@ export default function AdminDeviceGroups() {
             </Popconfirm>
           )}
           <Tooltip title="编辑"><Button icon={<EditOutlined />} onClick={() => edit(g)} /></Tooltip>
-          <Tooltip title="高级编辑">
-            <Button
-              icon={<EditOutlined />}
-              onClick={() => setAdv({ g, text: advText(g) })}
-            />
-          </Tooltip>
+          {(g.type === 'in' || g.type === 'out') && (
+            <Tooltip title="高级设置"><Button icon={<SettingOutlined />} onClick={() => setAdv(g)} /></Tooltip>
+          )}
           <Popconfirm title={`删除设备组「${g.name}」？`} onConfirm={() => run(() => api('DELETE', `/admin/groups/${g.id}`))}>
             <Tooltip title="删除"><Button icon={<DeleteOutlined />} /></Tooltip>
           </Popconfirm>
@@ -168,19 +166,6 @@ export default function AdminDeviceGroups() {
       ),
     },
   ]
-
-  // 高级编辑的初始内容：已保存的配置，加上当前生效的几个值
-  const advText = (g: AdminGroup) => {
-    let saved: Record<string, unknown> = {}
-    try {
-      saved = JSON.parse(g.config || '{}')
-    } catch {
-      /* 配置损坏时从空白开始 */
-    }
-    if (g.type === 'in') saved = { disable_udp: g.block_udp, ...saved }
-    if (g.type === 'out') saved = { tunnel_port: g.tunnel_port, mux: true, ...saved }
-    return JSON.stringify(saved, null, 2)
-  }
 
   const t = d?.type
   return (
@@ -301,48 +286,7 @@ export default function AdminDeviceGroups() {
         )}
       </Modal>
 
-      <Modal
-        title={adv ? `${adv.g.name} (#${adv.g.id})` : ''} open={!!adv} onCancel={() => setAdv(null)} destroyOnClose
-        onOk={() => {
-          if (!adv) return
-          let body
-          try {
-            body = JSON.parse(adv.text)
-          } catch {
-            return message.error('JSON 格式错误')
-          }
-          run(() => api('PUT', `/admin/groups/${adv.g.id}/config`, body).then(() => setAdv(null)), '保存成功')
-        }}
-      >
-        <Input.TextArea rows={12} style={{ fontFamily: 'monospace' }} value={adv?.text ?? ''} onChange={(e) => adv && setAdv({ ...adv, text: e.target.value })} />
-        <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
-          {adv?.g.type === 'in' && (
-            <>
-              入口可用的键：<br />
-              disable_udp: true/false — 屏蔽 UDP<br />
-              blocked_protocol: ["socks","http","tls"] — 屏蔽这些协议<br />
-              blocked_host / allowed_host: [".example.com"] — 域名黑名单 / 白名单（后缀匹配，二者不能同时用）<br />
-              blocked_path: ["/admin"] — HTTP 路径黑名单（后缀匹配）<br />
-              max_fail: 3, fail_timeout_sec: 30 — 出口连续失败几次后，多少秒内不再使用<br />
-              ipv6_group: [3] — 连接这些出口组时优先用 IPv6；[0] 表示全部优先，[0,1,2] 表示全部优先但 1、2 仍用 IPv4。出口没有 IPv6 时回落到 IPv4<br />
-              reverse_group: [3] — 这些出口组走反向隧道（出口主动连入口），[0] 表示全部；入口节点启动时需加 -rev-port 端口<br />
-              tls_inbound_policy: 0/1/2 — 1 只允许 TLS 入站规则；2 且只有管理员能监听端口（用户只能建子规则）<br />
-              tls_reject_empty_sni: true/false — 拒绝不带 SNI 的 TLS 连接
-            </>
-          )}
-          {adv?.g.type === 'out' && (
-            <>
-              出口可用的键：<br />
-              tunnel_port: 23456 — 隧道监听端口（需在防火墙放行）<br />
-              mux: true/false — 连接复用<br />
-              connect_type: "static", connect_address: "1.2.3.4", connect_port: 443 — 入口固定连这个地址（经 CDN、NAT 时用）<br />
-              connect_type: "dyn_ip4" / "dyn_ip6" — 强制用节点的 IPv4 / IPv6 连接。dyn_ip6 不回落：没有 IPv6 的出口节点不会被使用<br />
-              ws: {'{'}"host": "your.domain.com", "path": "/"{'}'} — ws 协议的 Host 头和路径
-            </>
-          )}
-          {adv?.g.type !== 'in' && adv?.g.type !== 'out' && '这种类型的设备组没有高级设置。'}
-        </Typography.Paragraph>
-      </Modal>
+      {adv && <GroupAdvanced key={adv.id} g={adv} groups={groups} onClose={() => setAdv(null)} onSaved={() => { setAdv(null); load() }} />}
 
       <FloatButton
         shape="square" icon={<FolderAddOutlined />} description="分组" style={{ insetInlineEnd: 24, insetBlockEnd: 48 }}

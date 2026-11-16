@@ -28,6 +28,8 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - 出口：限制入口、协议（tls_simple / ws / http）、故障转移组；隧道端口自动分配，可在高级编辑里修改
 - 链式出口：虚拟组，配置 1~3 跳出口（入口 → 第 1 跳 → … → 最后一跳 → 目标），按链式出口自身的倍率计费
 - 对接：在线安装命令、离线部署包（linux amd64 / amd64v3 / arm64）、重置 token
+- 高级设置（列表里的齿轮按钮，文档中也叫"高级编辑"/"高级配置"）：IPv6 优先、强制 IPv4/IPv6、反向隧道、入站屏蔽、TLS 入站策略、隧道端口等都可以直接点选，
+  不用手写配置；需要时可切到 JSON 视图查看或修改原始配置
 
 **转发规则**
 - TCP + UDP，指定或随机端口，多目标（随机 / 轮询 / 故障转移）
@@ -150,6 +152,8 @@ tar xzf fwdpanel_linux_amd64.tar.gz && cd fwdpanel && bash install.sh -domain �
 - 节点机器连不上面板下载时，用「对接 → 离线部署」下载对应架构的 `.tar.gz` 包，传上去后按弹窗里的命令解压并运行 `install.sh`。
 - 在安装命令后面可以追加节点端参数，例如 `-advertise 1.2.3.4`（出口对外地址）、`-enable-terminal`（允许在线终端）。
 - 在终端里直接运行时会询问服务名；如果已经装过，可以选择"只升级程序"或"重新安装"。
+- 引导模式下还会询问是否**优化系统网络参数**（开启 BBR + fq，调大 TCP/UDP 缓冲区、连接队列、本地端口范围和文件句柄数，
+  写入 `/etc/sysctl.d/99-fwdnode.conf`）以及是否安装常用工具（mtr、htop、iftop、nload 等）。不提问时用 `OPT=1`、`TOOLS=1` 打开。
 - 不想被提问、或同一台机器装多个节点：命令前加 `S=名字`，例如 `S=node2 bash <(curl ...) ...`。
 - 日志 `journalctl -fu nodeclient`，卸载 `bash /opt/nodeclient.uninstall.sh`。
 
