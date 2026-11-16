@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.8.0"
+const version = "0.9.0"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
