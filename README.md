@@ -186,7 +186,27 @@ git tag v0.9.0 && git push origin v0.9.0
 - 引导模式下还会询问是否**优化系统网络参数**（开启 BBR + fq，调大 TCP/UDP 缓冲区、连接队列、本地端口范围和文件句柄数，
   写入 `/etc/sysctl.d/99-fwdnode.conf`）以及是否安装常用工具（mtr、htop、iftop、nload 等）。不提问时用 `OPT=1`、`TOOLS=1` 打开。
 - 不想被提问、或同一台机器装多个节点：命令前加 `S=名字`，例如 `S=node2 bash <(curl ...) ...`。
-- 日志 `journalctl -fu nodeclient`，卸载 `bash /opt/nodeclient.uninstall.sh`。
+- 默认服务的日志可用 `journalctl -fu nodeclient` 查看。
+
+#### 卸载节点端
+
+在节点服务器上以 root 运行卸载脚本。默认服务名为 `nodeclient`。
+
+```bash
+bash /opt/nodeclient.uninstall.sh
+```
+
+如果安装时指定了服务名，就运行对应的脚本。例如 `node-in` 用 `bash /opt/node-in.uninstall.sh`。同一台机器装了多个节点时，按服务名分别卸载。不确定服务名时，可先查节点的 systemd 服务文件。
+
+```bash
+grep -l '^Description=forward panel node client' /etc/systemd/system/*.service
+```
+
+卸载脚本会停止服务、取消开机自启，并删除 systemd 服务文件、`/opt/服务名` 下的程序和配置，以及卸载脚本本身。
+
+- **面板记录**。节点离线后，管理员可以在「探针」页点该节点的红色「删除」按钮并确认。
+- **网络优化**。如果安装时启用了 `OPT=1`，并且同机其他服务无需这份配置，可删除 `/etc/sysctl.d/99-fwdnode.conf`，然后安排重启，让系统重新加载网络参数。
+- **额外文件和工具**。可以删除手动下载的离线安装包及其解压目录，以及用 `-id-file` 保存在安装目录之外的节点 ID 文件。如果启用了 `TOOLS=1`，查阅包管理器的安装记录，只卸载当时新增且没有其他用途的工具。
 
 ### 本机试用
 
