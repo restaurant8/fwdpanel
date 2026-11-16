@@ -88,9 +88,10 @@ func main() {
 		for range time.Tick(time.Hour) {
 			db.Where("expire_at < ?", time.Now()).Delete(&Session{})
 			autoRenew()
+			db.Where("expires_at < ?", time.Now().Add(-24*time.Hour)).Delete(&NodeUninstall{})
 			if *retention > 0 {
 				keep := max(*retention, 600)
-				db.Where("last_seen < ?", time.Now().Add(-time.Duration(keep)*time.Second)).Delete(&Node{})
+				withoutPendingUninstall(db.Where("last_seen < ?", time.Now().Add(-time.Duration(keep)*time.Second))).Delete(&Node{})
 			}
 		}
 	}()
@@ -158,6 +159,7 @@ func registerRoutes(api *gin.RouterGroup) {
 	api.Any("/guest/pay/notify/:no", handlePayNotify)
 	api.POST("/guest/telegram/webhook", handleTelegramWebhook)
 	api.POST("/node/sync", handleNodeSync)
+	api.POST("/node/uninstall_result", handleNodeUninstallResult)
 	api.GET("/node/ws", handleNodeWS)
 	// 浏览器的 WebSocket 不能带 Authorization 头，终端接口在连接后的第一条消息里鉴权
 	api.GET("/admin/terminal/:id", handleAdminTerminal)
@@ -232,6 +234,7 @@ func registerRoutes(api *gin.RouterGroup) {
 	a.DELETE("/nodes/:id", handleAdminDeleteNode)
 	a.POST("/nodes/delete_offline", handleAdminDeleteOfflineNodes)
 	a.POST("/nodes/:id/upgrade", handleAdminUpgradeNode)
+	a.POST("/nodes/:id/uninstall", handleAdminUninstallNode)
 	a.POST("/nodes/upgrade_all", handleAdminUpgradeAllNodes)
 	a.GET("/update", handleAdminUpdateInfo)
 	a.POST("/update", handleAdminUpdateApply)

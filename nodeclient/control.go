@@ -22,12 +22,14 @@ import (
 
 // 与面板之间的长连接，消息格式见面板端 hub.go。
 type ctlMsg struct {
-	T    string `json:"t"`
-	SID  string `json:"sid,omitempty"`
-	D    string `json:"d,omitempty"`
-	Cols int    `json:"cols,omitempty"`
-	Rows int    `json:"rows,omitempty"`
-	Rule int    `json:"rule,omitempty"`
+	T           string `json:"t"`
+	SID         string `json:"sid,omitempty"`
+	D           string `json:"d,omitempty"`
+	Cols        int    `json:"cols,omitempty"`
+	Rows        int    `json:"rows,omitempty"`
+	Rule        int    `json:"rule,omitempty"`
+	Token       string `json:"token,omitempty"`
+	ServiceName string `json:"service_name,omitempty"`
 }
 
 type termSession struct {
@@ -41,10 +43,12 @@ type control struct {
 	in              *ingress
 	nudge           chan struct{} // 面板要求立即同步
 
-	wmu   sync.Mutex
-	ws    *websocket.Conn
-	tmu   sync.Mutex
-	terms map[string]*termSession
+	wmu              sync.Mutex
+	ws               *websocket.Conn
+	tmu              sync.Mutex
+	terms            map[string]*termSession
+	maintenance      sync.Mutex
+	uninstallRequest string
 }
 
 func (c *control) send(m ctlMsg) {
@@ -59,8 +63,11 @@ func (c *control) send(m ctlMsg) {
 // run 一直保持长连接，断开后每 5 秒重连。
 func (c *control) run() {
 	wsURL := "ws" + strings.TrimPrefix(c.url, "http") + "/api/v1/node/ws"
-	hdr := http.Header{"Authorization": {"Bearer " + c.token}, "X-Node-UID": {c.uid}}
 	for {
+		hdr := http.Header{"Authorization": {"Bearer " + c.token}, "X-Node-UID": {c.uid}}
+		if service, err := managedNodeService(); err == nil {
+			hdr.Set("X-Node-Service", service)
+		}
 		ws, _, err := (&websocket.Dialer{Proxy: env.proxy, HandshakeTimeout: 15 * time.Second}).Dial(wsURL, hdr)
 		if err != nil {
 			time.Sleep(5 * time.Second)
@@ -117,10 +124,18 @@ func (c *control) handle(m ctlMsg) {
 		}()
 	case "upgrade":
 		go func() {
-			if err := selfUpgrade(c.url); err != nil {
-				log.Printf("升级失败: %v", err)
+			if !c.maintenance.TryLock() {
+				return
+			}
+			defer c.maintenance.Unlock()
+			if !c.uninstallInProgress() {
+				if err := selfUpgrade(c.url); err != nil {
+					log.Printf("升级失败: %v", err)
+				}
 			}
 		}()
+	case "uninstall":
+		go c.uninstall(m)
 	case "open":
 		c.openTerm(m)
 	case "in":

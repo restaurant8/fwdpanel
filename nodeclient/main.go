@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.9.4"
+const version = "0.9.5"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
@@ -147,6 +147,12 @@ func loadUID(path string) string {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--uninstall-worker" {
+		if err := runUninstallWorker(os.Args[2]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	panel := flag.String("panel", "", "面板地址，例如 http://1.2.3.4:8080")
 	token := flag.String("token", "", "设备组对接密钥")
 	advertise := flag.String("advertise", "", "（出口）入口连接本机时使用的地址，默认使用面板看到的 IP")

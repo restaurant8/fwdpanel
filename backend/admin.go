@@ -737,7 +737,17 @@ func handleAdminListNodes(c *gin.Context) {
 }
 
 func handleAdminDeleteNode(c *gin.Context) {
-	db.Delete(&Node{}, "id = ?", c.Param("id"))
+	result := withoutPendingUninstall(db.Where("id = ?", c.Param("id"))).Delete(&Node{})
+	if dbFail(c, result.Error) {
+		return
+	}
+	if result.RowsAffected == 0 {
+		var job NodeUninstall
+		if db.First(&job, "node_id = ? AND state = ? AND expires_at > ?", c.Param("id"), "pending", time.Now()).Error == nil {
+			fail(c, 409, "节点正在卸载，请等待回报")
+			return
+		}
+	}
 	c.JSON(200, gin.H{"ok": true})
 }
 
@@ -751,7 +761,7 @@ func handleAdminDeleteOfflineNodes(c *gin.Context) {
 		fail(c, 400, "请选择一个节点或所有离线节点")
 		return
 	}
-	q := db.Where("last_seen <= ?", time.Now().Add(-nodeOnlineWindow))
+	q := withoutPendingUninstall(db.Where("last_seen <= ?", time.Now().Add(-nodeOnlineWindow)))
 	if !req.All {
 		q = q.Where("id = ?", req.ID)
 	}
@@ -760,7 +770,7 @@ func handleAdminDeleteOfflineNodes(c *gin.Context) {
 		return
 	}
 	if !req.All && result.RowsAffected == 0 {
-		fail(c, 409, "节点已恢复在线或已被删除")
+		fail(c, 409, "节点已恢复在线、已被删除或正在卸载")
 		return
 	}
 	c.JSON(200, gin.H{"deleted": result.RowsAffected})

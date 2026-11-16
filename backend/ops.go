@@ -17,7 +17,7 @@ import (
 )
 
 var allModels = []any{&User{}, &UserGroup{}, &DeviceGroup{}, &Node{}, &Rule{}, &RuleGroup{}, &KV{},
-	&GroupTrafficDaily{}, &Session{}, &TrafficDaily{}, &Order{}}
+	&GroupTrafficDaily{}, &Session{}, &TrafficDaily{}, &Order{}, &NodeUninstall{}}
 
 // openDB 按连接串打开数据库：
 //

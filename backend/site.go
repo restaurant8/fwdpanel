@@ -11,10 +11,10 @@ import (
 )
 
 // 用 var 而不是 const：测试在线升级时可以用 -ldflags "-X main.panelVersion=..." 构建一个"旧版本"
-var panelVersion = "0.9.4"
+var panelVersion = "0.9.5"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.9.4"
+const nodeVersion = "0.9.5"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //
@@ -149,20 +149,24 @@ func handleAutoRenew(c *gin.Context) {
 
 // nodeRow 是探针页（以及探针开放接口）里的一个节点。
 type nodeRow struct {
-	ID       uint            `json:"id"`
-	Name     string          `json:"name"`
-	Note     string          `json:"note"` // 管理员给这台机器写的备注
-	IP       string          `json:"ip"`
-	IP6      string          `json:"ip6"`
-	Version  string          `json:"version"`
-	Conns    int             `json:"conns"`     // TCP 连接数 + UDP 会话数
-	ConnsTCP int             `json:"conns_tcp"` // TCP 连接数
-	ConnsUDP int             `json:"conns_udp"` // UDP 会话数
-	Weight   int             `json:"weight"`    // 出口节点实际生效的权重
-	Online   bool            `json:"online"`
-	Terminal bool            `json:"terminal"`
-	LastSeen time.Time       `json:"last_seen"`
-	Status   json.RawMessage `json:"status"`
+	ID             uint            `json:"id"`
+	Name           string          `json:"name"`
+	Note           string          `json:"note"` // 管理员给这台机器写的备注
+	IP             string          `json:"ip"`
+	IP6            string          `json:"ip6"`
+	Version        string          `json:"version"`
+	Conns          int             `json:"conns"`     // TCP 连接数 + UDP 会话数
+	ConnsTCP       int             `json:"conns_tcp"` // TCP 连接数
+	ConnsUDP       int             `json:"conns_udp"` // UDP 会话数
+	Weight         int             `json:"weight"`    // 出口节点实际生效的权重
+	Online         bool            `json:"online"`
+	Terminal       bool            `json:"terminal"`
+	LastSeen       time.Time       `json:"last_seen"`
+	Status         json.RawMessage `json:"status"`
+	ServiceName    string          `json:"service_name,omitempty"`
+	ServerIP       string          `json:"server_ip,omitempty"`
+	Uninstalling   bool            `json:"uninstalling,omitempty"`
+	UninstallError string          `json:"uninstall_error,omitempty"`
 }
 
 func statusRow(n *Node, admin bool) nodeRow {
@@ -175,6 +179,8 @@ func statusRow(n *Node, admin bool) nodeRow {
 	}
 	if !admin {
 		nr.IP, nr.IP6 = "", "" // 节点地址只给管理员看
+	} else if nc := getNodeConnection(n.ID); nr.Online && nc != nil && nc.serviceName != "" {
+		nr.ServiceName, nr.ServerIP = nc.serviceName, n.IP
 	}
 	return nr
 }
@@ -186,6 +192,14 @@ func handleStatus(c *gin.Context) {
 	db.Order("id desc").Find(&groups)
 	var nodes []Node
 	db.Order("id").Find(&nodes)
+	jobs := map[uint]NodeUninstall{}
+	if u.Admin {
+		var uninstallJobs []NodeUninstall
+		db.Select("node_id", "state", "message", "expires_at").Where("state IN ?", []string{"pending", "failed"}).Find(&uninstallJobs)
+		for _, job := range uninstallJobs {
+			jobs[job.NodeID] = job
+		}
+	}
 	type groupRow struct {
 		ID    uint      `json:"id"`
 		Name  string    `json:"name"`
@@ -202,7 +216,17 @@ func handleStatus(c *gin.Context) {
 			if n.GroupID != g.ID {
 				continue
 			}
-			row.Nodes = append(row.Nodes, statusRow(&n, u.Admin))
+			nr := statusRow(&n, u.Admin)
+			switch job := jobs[n.ID]; job.State {
+			case "pending":
+				nr.Uninstalling = time.Now().Before(job.ExpiresAt)
+				if !nr.Uninstalling {
+					nr.UninstallError = "没有收到卸载结果，请在节点服务器上核实"
+				}
+			case "failed":
+				nr.UninstallError = job.Message
+			}
+			row.Nodes = append(row.Nodes, nr)
 		}
 		if len(row.Nodes) > 0 {
 			out = append(out, row)

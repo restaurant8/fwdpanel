@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { App as AntApp, Button, Checkbox, Input, InputNumber, Modal, Popconfirm, Tooltip } from 'antd'
 import {
-  ApiOutlined, ArrowUpOutlined, CheckCircleOutlined, ControlOutlined, DeleteOutlined, EditOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, UploadOutlined,
+  ApiOutlined, ArrowUpOutlined, CheckCircleOutlined, ControlOutlined, DeleteOutlined, EditOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, StopOutlined, UploadOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { api, NodeStatus, StatusGroup, StatusNode } from '../api'
@@ -68,6 +68,32 @@ export default function Status() {
         try {
           const { deleted } = await api<{ deleted: number }>('POST', '/admin/nodes/delete_offline', all ? { all: true } : { id: node.id })
           message.success(deleted ? `已删除 ${deleted} 个离线节点` : '当前没有离线节点')
+        } catch (e) {
+          message.error(errMsg(e))
+        }
+        await load()
+      },
+    })
+  }
+
+  const confirmUninstall = (node: StatusNode) => {
+    modal.confirm({
+      title: '卸载节点端？',
+      content: (
+        <div style={{ overflowWrap: 'anywhere' }}>
+          <div>服务器 IP　{node.server_ip}</div>
+          <div>节点名称　{node.name}</div>
+          <div>服务名　{node.service_name}</div>
+          <p style={{ margin: '12px 0 0' }}>确认后会停止此服务并删除它的程序和配置。节点确认清理成功后，面板会移除探针记录。</p>
+        </div>
+      ),
+      okText: '确认卸载',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await api('POST', `/admin/nodes/${node.id}/uninstall`, { service_name: node.service_name, ip: node.server_ip })
+          message.info('卸载任务已提交，等待节点回报')
         } catch (e) {
           message.error(errMsg(e))
         }
@@ -152,7 +178,7 @@ export default function Status() {
                           {admin && (
                             <td className="probe-action-cell" style={{ ...td, padding: '6px 8px' }}>
                               <div className="probe-actions">
-                                {n.online && site.node_version && n.version !== site.node_version &&
+                                {n.online && !n.uninstalling && site.node_version && n.version !== site.node_version &&
                                   iconBtn(`升级到 ${site.node_version}（当前 ${n.version}）`, <ArrowUpOutlined style={{ color: '#e91e63' }} />, () =>
                                     api('POST', `/admin/nodes/${n.id}/upgrade`).then(
                                       () => message.success('已下发升级，节点会自动下载并重启'),
@@ -169,10 +195,20 @@ export default function Status() {
                                 })}
                                 {n.terminal && iconBtn('在线终端', <CodeOutlined />, () => setTerm(n))}
                                 {iconBtn('详情', <InfoCircleOutlined />, () => setDetail(detail?.id === n.id ? null : n))}
-                                {!n.online && (
+                                {(n.uninstalling || (n.online && n.service_name && n.server_ip)) && (
+                                  <Tooltip title={n.uninstalling ? '卸载中，等待节点回报' : '卸载节点端'}>
+                                    <Button className="probe-delete-button" size="small" danger icon={<StopOutlined />} loading={n.uninstalling} aria-label="卸载节点端" onClick={() => confirmUninstall(n)}>卸载</Button>
+                                  </Tooltip>
+                                )}
+                                {!n.online && !n.uninstalling && (
                                   <Button className="probe-delete-button" size="small" danger icon={<DeleteOutlined />} onClick={() => confirmDelete(n)}>删除</Button>
                                 )}
                               </div>
+                              {n.uninstall_error && (
+                                <Tooltip title={n.uninstall_error}>
+                                  <div className="probe-uninstall-error" tabIndex={0}>卸载未确认</div>
+                                </Tooltip>
+                              )}
                             </td>
                           )}
                         </tr>

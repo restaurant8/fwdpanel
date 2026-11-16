@@ -138,6 +138,13 @@ body.dark {
   height: 32px;
 }
 
+.probe-uninstall-error {
+  margin-top: 4px;
+  color: #b42318;
+  text-align: right;
+  font-size: 12px;
+}
+
 @media (max-width: 700px) {
   .probe-actions {
     max-width: 104px;

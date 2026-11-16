@@ -191,6 +191,10 @@ export interface StatusNode {
   online: boolean
   terminal: boolean
   last_seen: string
+  service_name?: string
+  server_ip?: string
+  uninstalling?: boolean
+  uninstall_error?: string
   status: NodeStatus | null
 }
 

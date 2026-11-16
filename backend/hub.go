@@ -22,13 +22,14 @@ import (
 //	              {t:"open",sid,cols,rows} {t:"in",sid,d:base64} {t:"resize",sid,cols,rows} {t:"close",sid}
 //	节点 -> 面板  {t:"ping"} {t:"out",sid,d:base64} {t:"exit",sid,d:原因}
 type ctlMsg struct {
-	T     string `json:"t"`
-	SID   string `json:"sid,omitempty"`
-	D     string `json:"d,omitempty"`
-	Cols  int    `json:"cols,omitempty"`
-	Rows  int    `json:"rows,omitempty"`
-	Token string `json:"token,omitempty"`
-	Rule  uint   `json:"rule,omitempty"`
+	T           string `json:"t"`
+	SID         string `json:"sid,omitempty"`
+	D           string `json:"d,omitempty"`
+	Cols        int    `json:"cols,omitempty"`
+	Rows        int    `json:"rows,omitempty"`
+	Token       string `json:"token,omitempty"`
+	ServiceName string `json:"service_name,omitempty"`
+	Rule        uint   `json:"rule,omitempty"`
 }
 
 type wsPeer struct {
@@ -45,10 +46,11 @@ func (p *wsPeer) send(m ctlMsg) error {
 
 type nodeConn struct {
 	wsPeer
-	nodeID  uint
-	groupID uint
-	tmu     sync.Mutex
-	terms   map[string]*wsPeer // 终端会话 ID -> 管理员浏览器
+	nodeID      uint
+	groupID     uint
+	serviceName string
+	tmu         sync.Mutex
+	terms       map[string]*wsPeer // 终端会话 ID -> 管理员浏览器
 }
 
 func (nc *nodeConn) term(sid string) *wsPeer {
@@ -91,11 +93,13 @@ func getLive(id uint) nodeLive {
 	return live[id]
 }
 
-func nodeConnected(id uint) bool {
+func getNodeConnection(id uint) *nodeConn {
 	hubMu.Lock()
 	defer hubMu.Unlock()
-	return hub[id] != nil
+	return hub[id]
 }
+
+func nodeConnected(id uint) bool { return getNodeConnection(id) != nil }
 
 // nudgeAll 让所有在线节点立即同步一次。规则、用户、设备组有改动时调用。
 func nudgeAll() {
@@ -139,6 +143,9 @@ func handleNodeWS(c *gin.Context) {
 	defer ws.Close()
 	ws.SetReadLimit(1 << 20)
 	nc := &nodeConn{wsPeer: wsPeer{ws: ws}, nodeID: node.ID, groupID: g.ID, terms: map[string]*wsPeer{}}
+	if service := c.GetHeader("X-Node-Service"); serviceNameRE.MatchString(service) {
+		nc.serviceName = service
+	}
 
 	hubMu.Lock()
 	if old := hub[node.ID]; old != nil {

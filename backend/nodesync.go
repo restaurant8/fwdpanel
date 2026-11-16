@@ -121,7 +121,9 @@ func handleNodeSync(c *gin.Context) {
 	}
 
 	var node Node
-	db.Where(Node{GroupID: g.ID, UID: req.UID}).FirstOrCreate(&node)
+	if dbFail(c, db.Where(Node{GroupID: g.ID, UID: req.UID}).FirstOrCreate(&node).Error) {
+		return
+	}
 	node.Name, node.Version, node.Advertise = req.Name, req.Version, req.Advertise
 	node.IP, node.Conns, node.LastSeen = nodeIP(c.ClientIP(), req.IPv4), req.Conns, time.Now()
 	node.TunnelPort, node.Weight, node.RevPort = req.TunnelPort, req.Weight, req.RevPort
@@ -130,7 +132,10 @@ func handleNodeSync(c *gin.Context) {
 	if ip := net.ParseIP(req.IPv6); ip != nil && ip.To4() == nil {
 		node.IP6 = ip.String()
 	}
-	db.Omit("PanelWeight", "Note").Save(&node) // 权重和备注由管理员在探针页设置，同步时不要覆盖
+	// 只更新已有记录。卸载回报和最后一次心跳并发时，心跳不能重新插入已删除的记录。
+	if dbFail(c, db.Model(&node).Select("*").Omit("ID", "PanelWeight", "Note").Updates(&node).Error) {
+		return
+	}
 	setLive(node.ID, nodeLive{Status: req.Status, Terminal: req.Terminal})
 
 	recordTraffic(&g, req.Traffic)

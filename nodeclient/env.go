@@ -17,7 +17,7 @@ import (
 // 通过环境变量调整的行为。安装脚本生成的 start.sh 会先加载同目录的 env.sh，
 // 所以在 env.sh 里写 export XXX=... 然后重启服务即可。
 //
-//	DISABLE_EXECUTE=1      禁止面板在本机执行命令：在线终端和远程升级都不可用
+//	DISABLE_EXECUTE=1      禁止面板在本机执行命令：关闭在线终端、远程升级和卸载
 //	BIND_INBOUND=ip[,ip]   入口只在这些本机 IP 上监听（默认监听所有地址）
 //	BIND_OUTBOUND_4=ip     出站 IPv4 连接使用这个本机 IP
 //	BIND_OUTBOUND_6=ip     出站 IPv6 连接使用这个本机 IP
