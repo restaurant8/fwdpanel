@@ -2,13 +2,15 @@
 # 节点端安装脚本。两种用法：
 #   在线:  bash <(curl -fLSs https://面板地址/download/install.sh) -panel https://面板地址 -token 对接密钥
 #   离线:  解压安装包后在目录里运行  bash install.sh -panel https://面板地址 -token 对接密钥
-# 其余参数（如 -advertise、-enable-terminal、-name）会原样传给节点端程序。
+# 其余参数（如 -advertise、-name）会原样传给节点端程序。
+# 在线终端默认开启（面板管理员可以在探针页打开这台机器的 shell）；不想开启就在命令前加 TERMINAL=0。
 # 在终端里直接运行时是引导模式：会询问服务名；如果已经装过，会问是升级还是重装。
 # 用环境变量 S 指定服务名（例如 S=node2 bash <(curl ...) ...）则全程不提问，适合自动化；
 # 同一台机器装多个节点时给每个节点不同的服务名。
 # 可选步骤（引导模式下会询问；不提问时用环境变量打开）：
 #   OPT=1    优化系统网络参数（BBR、TCP/UDP 缓冲区、连接队列、端口范围、文件句柄数）
 #   TOOLS=1  安装常用工具（curl wget mtr htop iftop nload 等）
+#   TERMINAL=0  不开启在线终端
 set -e
 
 PANEL=""
@@ -158,6 +160,11 @@ if [ "$MODE" = "install" ]; then
     echo '[ -f ./env.sh ] && . ./env.sh'
     printf 'exec ./nodeclient'
     printf ' %q' "$@"
+    # 在线终端默认开启；TERMINAL=0 时不开启。命令里已经带了 -enable-terminal 就不重复加
+    case "${TERMINAL:-1}" in
+      0 | n | N | no) ;;
+      *) case " $* " in *" -enable-terminal "*) ;; *) printf ' -enable-terminal' ;; esac ;;
+    esac
     echo
   } > "$DIR/start.sh"
   chmod 700 "$DIR/start.sh"

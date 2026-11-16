@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -214,13 +215,13 @@ func dialTunnel(out *outCfg, h tunnelHello) (net.Conn, error) {
 var pickMu sync.Mutex
 
 // pickEgress 从还没试过的出口里选一个：优先没被判定故障的，其次「连接数 / 权重」最小的，
-// 相同则随机。选中的同时就把它的连接数加一——并发的连接才不会都挑中同一台。
+// 相同则按权重随机（连接很少、负载都是 0 时也能按权重比例分配）。
+// 选中的同时就把它的连接数加一——并发的连接才不会都挑中同一台。
 func pickEgress(out *outCfg, tried map[string]bool) (string, bool) {
 	pickMu.Lock()
 	defer pickMu.Unlock()
-	best, bestLoad, bestDown, found := "", 0.0, false, false
-	for _, i := range rand.Perm(len(out.Addrs)) {
-		a := out.Addrs[i]
+	best, bestLoad, bestKey, bestDown, found := "", 0.0, 0.0, false, false
+	for i, a := range out.Addrs {
 		if tried[a] {
 			continue
 		}
@@ -229,8 +230,10 @@ func pickEgress(out *outCfg, tried map[string]bool) (string, bool) {
 			w = float64(out.Weights[i])
 		}
 		load, down := float64(egressCounter(a).Load())/w, egressDown(a)
-		if !found || (bestDown && !down) || (bestDown == down && load < bestLoad) {
-			best, bestLoad, bestDown, found = a, load, down, true
+		// 加权随机抽样：key = u^(1/w)，key 最大的被选中的概率正比于权重
+		key := math.Pow(rand.Float64(), 1/w)
+		if !found || (bestDown && !down) || (bestDown == down && (load < bestLoad || (load == bestLoad && key > bestKey))) {
+			best, bestLoad, bestKey, bestDown, found = a, load, key, down, true
 		}
 	}
 	if found {

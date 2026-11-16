@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const panelVersion = "0.9.0"
+const panelVersion = "0.9.1"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.9.0"
+const nodeVersion = "0.9.1"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //
@@ -146,6 +146,38 @@ func handleAutoRenew(c *gin.Context) {
 
 // ---------- 节点状态页 ----------
 
+// nodeRow 是探针页（以及探针开放接口）里的一个节点。
+type nodeRow struct {
+	ID       uint            `json:"id"`
+	Name     string          `json:"name"`
+	Note     string          `json:"note"` // 管理员给这台机器写的备注
+	IP       string          `json:"ip"`
+	IP6      string          `json:"ip6"`
+	Version  string          `json:"version"`
+	Conns    int             `json:"conns"`     // TCP 连接数 + UDP 会话数
+	ConnsTCP int             `json:"conns_tcp"` // TCP 连接数
+	ConnsUDP int             `json:"conns_udp"` // UDP 会话数
+	Weight   int             `json:"weight"`    // 出口节点实际生效的权重
+	Online   bool            `json:"online"`
+	Terminal bool            `json:"terminal"`
+	LastSeen time.Time       `json:"last_seen"`
+	Status   json.RawMessage `json:"status"`
+}
+
+func statusRow(n *Node, admin bool) nodeRow {
+	lv := getLive(n.ID)
+	nr := nodeRow{ID: n.ID, Name: n.Name, Note: n.Note, IP: n.host(), IP6: n.IP6, Version: n.Version, Conns: n.Conns, ConnsTCP: n.Conns - n.ConnsUDP, ConnsUDP: n.ConnsUDP, Weight: n.weight(),
+		Online: n.online(), LastSeen: n.LastSeen, Status: lv.Status,
+		Terminal: admin && lv.Terminal && nodeConnected(n.ID)}
+	if !nr.Online || len(nr.Status) == 0 {
+		nr.Status = json.RawMessage("null")
+	}
+	if !admin {
+		nr.IP, nr.IP6 = "", "" // 节点地址只给管理员看
+	}
+	return nr
+}
+
 // handleStatus 按设备组列出节点和探针数据。设备组可以设置对非管理员或对所有人隐藏。
 func handleStatus(c *gin.Context) {
 	u := me(c)
@@ -153,18 +185,6 @@ func handleStatus(c *gin.Context) {
 	db.Order("id desc").Find(&groups)
 	var nodes []Node
 	db.Order("id").Find(&nodes)
-	type nodeRow struct {
-		ID       uint            `json:"id"`
-		Name     string          `json:"name"`
-		IP       string          `json:"ip"`
-		IP6      string          `json:"ip6"`
-		Version  string          `json:"version"`
-		Conns    int             `json:"conns"`
-		Online   bool            `json:"online"`
-		Terminal bool            `json:"terminal"`
-		LastSeen time.Time       `json:"last_seen"`
-		Status   json.RawMessage `json:"status"`
-	}
 	type groupRow struct {
 		ID    uint      `json:"id"`
 		Name  string    `json:"name"`
@@ -173,10 +193,7 @@ func handleStatus(c *gin.Context) {
 	}
 	out := []groupRow{}
 	for _, g := range groups {
-		if g.HideInStatus == 2 || (g.HideInStatus == 1 && !u.Admin) || g.Type == GroupChain {
-			continue
-		}
-		if !u.Admin && !groupAllowsUser(&g, u) {
+		if !statusVisible(&g, u) {
 			continue
 		}
 		row := groupRow{ID: g.ID, Name: g.Name, Type: g.Type, Nodes: []nodeRow{}}
@@ -184,14 +201,7 @@ func handleStatus(c *gin.Context) {
 			if n.GroupID != g.ID {
 				continue
 			}
-			lv := getLive(n.ID)
-			nr := nodeRow{ID: n.ID, Name: n.Name, IP: n.host(), IP6: n.IP6, Version: n.Version, Conns: n.Conns,
-				Online: n.online(), LastSeen: n.LastSeen, Status: lv.Status,
-				Terminal: u.Admin && lv.Terminal && nodeConnected(n.ID)}
-			if !nr.Online || len(nr.Status) == 0 {
-				nr.Status = json.RawMessage("null")
-			}
-			row.Nodes = append(row.Nodes, nr)
+			row.Nodes = append(row.Nodes, statusRow(&n, u.Admin))
 		}
 		if len(row.Nodes) > 0 {
 			out = append(out, row)

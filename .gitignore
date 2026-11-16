@@ -12,3 +12,4 @@ backend/webdist/*
 backend/nodedist/*
 !backend/webdist/README.txt
 !backend/nodedist/README.txt
+.DS_Store

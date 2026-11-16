@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,8 +34,13 @@ type closeWriter interface{ CloseWrite() error }
 // relay 在两条连接之间双向转发并统计流量，直到两个方向都结束。
 // client -> up 算上行，lims 里的限速器按方向分别生效。
 func relay(client, up net.Conn, rule uint, lims []*limPair) {
-	activeConns.Add(1)
-	defer activeConns.Add(-1)
+	relayCounted(client, up, rule, lims, &tcpConns)
+}
+
+// relayCounted 同 relay，连接数记在 counter 上（链式出口中间一跳转交 UDP 流量时记到 UDP 上）。
+func relayCounted(client, up net.Conn, rule uint, lims []*limPair, counter *atomic.Int64) {
+	counter.Add(1)
+	defer counter.Add(-1)
 	var wg sync.WaitGroup
 	pipe := func(dst, src net.Conn, isUp bool) {
 		defer wg.Done()

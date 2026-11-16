@@ -160,6 +160,7 @@ func registerRoutes(api *gin.RouterGroup) {
 	api.GET("/node/ws", handleNodeWS)
 	// 浏览器的 WebSocket 不能带 Authorization 头，终端接口在连接后的第一条消息里鉴权
 	api.GET("/admin/terminal/:id", handleAdminTerminal)
+	registerOpenRoutes(api)
 
 	u := api.Group("", authRequired, limitByUser)
 	u.POST("/auth/logout", handleLogout)
@@ -181,6 +182,9 @@ func registerRoutes(api *gin.RouterGroup) {
 	u.POST("/user/telegram/unbind", handleTelegramUnbind)
 	u.POST("/user/push", handleSetPush)
 	u.GET("/status", handleStatus)
+	u.GET("/user/probe_api", handleGetProbeAPI)
+	u.POST("/user/probe_api/reset", handleResetProbeAPI)
+	u.DELETE("/user/probe_api", handleDisableProbeAPI)
 	u.POST("/user/auto_renew", handleAutoRenew)
 	u.GET("/rules", handleListRules)
 	u.POST("/rules", handleCreateRule)
@@ -226,4 +230,6 @@ func registerRoutes(api *gin.RouterGroup) {
 	a.GET("/nodes", handleAdminListNodes)
 	a.DELETE("/nodes/:id", handleAdminDeleteNode)
 	a.POST("/nodes/:id/upgrade", handleAdminUpgradeNode)
+	a.PUT("/nodes/:id/weight", handleAdminNodeWeight)
+	a.PUT("/nodes/:id/note", handleAdminNodeNote)
 }

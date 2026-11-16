@@ -741,6 +741,53 @@ func handleAdminDeleteNode(c *gin.Context) {
 	c.JSON(200, gin.H{"ok": true})
 }
 
+// handleAdminNodeWeight 设置出口节点的负载均衡权重。0 表示恢复默认（节点启动参数 -weight，没有则为 1）。
+func handleAdminNodeWeight(c *gin.Context) {
+	var req struct {
+		Weight int `json:"weight"`
+	}
+	if c.ShouldBindJSON(&req) != nil || req.Weight < 0 || req.Weight > 10000 {
+		fail(c, 400, "权重应为 0 到 10000 的整数")
+		return
+	}
+	var n Node
+	if db.First(&n, "id = ?", c.Param("id")).Error != nil {
+		fail(c, 404, "节点不存在")
+		return
+	}
+	if dbFail(c, db.Model(&n).Update("panel_weight", req.Weight).Error) {
+		return
+	}
+	nudgeAll()
+	n.PanelWeight = req.Weight
+	c.JSON(200, gin.H{"ok": true, "weight": n.weight()})
+}
+
+// handleAdminNodeNote 设置节点的备注。
+func handleAdminNodeNote(c *gin.Context) {
+	var req struct {
+		Note string `json:"note"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		fail(c, 400, "请求格式错误")
+		return
+	}
+	req.Note = strings.TrimSpace(req.Note)
+	if len([]rune(req.Note)) > 80 {
+		fail(c, 400, "备注最多 80 个字")
+		return
+	}
+	var n Node
+	if db.First(&n, "id = ?", c.Param("id")).Error != nil {
+		fail(c, 404, "节点不存在")
+		return
+	}
+	if dbFail(c, db.Model(&n).Update("note", req.Note).Error) {
+		return
+	}
+	c.JSON(200, gin.H{"ok": true, "note": req.Note})
+}
+
 // handleAdminResetGroupTraffic 清空选中设备组的已用流量统计。
 func handleAdminResetGroupTraffic(c *gin.Context) {
 	var req struct {

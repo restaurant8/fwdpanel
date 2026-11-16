@@ -103,8 +103,8 @@ func (l *ruleListener) runUDPSession(pc net.PacketConn, client net.Addr, s *udpS
 	}
 	defer l.untrack(up)
 	defer up.Close()
-	activeConns.Add(1)
-	defer activeConns.Add(-1)
+	udpConns.Add(1)
+	defer udpConns.Add(-1)
 	lims := l.lims(cfg)
 
 	// 上游 -> 客户端
@@ -167,8 +167,8 @@ func (l *ruleListener) runUDPSession(pc net.PacketConn, client net.Addr, s *udpS
 
 // relayUDPStream 是出口侧：把隧道里的帧和目标的 UDP 包互相转换。
 func relayUDPStream(tun net.Conn, up net.Conn, rule uint) {
-	activeConns.Add(1)
-	defer activeConns.Add(-1)
+	udpConns.Add(1)
+	defer udpConns.Add(-1)
 	defer tun.Close()
 	defer up.Close()
 	go func() {

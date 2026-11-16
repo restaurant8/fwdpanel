@@ -184,6 +184,10 @@ export interface StatusNode {
   ip6: string
   version: string
   conns: number
+  conns_tcp: number
+  conns_udp: number
+  weight: number
+  note: string
   online: boolean
   terminal: boolean
   last_seen: string

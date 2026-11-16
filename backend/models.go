@@ -26,7 +26,9 @@ type User struct {
 	PlanID       uint    `json:"plan_id"` // 当前套餐，0 表示没有
 	// 邀请：自己的邀请码、邀请人
 	InviteCode string `gorm:"size:16;index" json:"-"`
-	InviterID  uint   `json:"inviter_id"`
+	// 探针开放接口的密钥，空表示没有启用
+	APIKey    string `gorm:"size:64;index" json:"-"`
+	InviterID uint   `json:"inviter_id"`
 	// Telegram：绑定的聊天 ID（0 表示未绑定）、待使用的绑定码、是否关闭推送
 	TGChatID   int64      `json:"tg_chat_id"`
 	TGBindCode string     `gorm:"size:16" json:"-"`
@@ -123,20 +125,36 @@ type Node struct {
 	IP        string `json:"ip"`
 	Advertise string `json:"advertise"`
 	Version   string `json:"version"`
-	Conns     int    `json:"conns"`
+	Conns     int    `json:"conns"`     // TCP 连接数 + UDP 会话数
+	ConnsUDP  int    `json:"conns_udp"` // 其中的 UDP 会话数
 	// 出口节点自己指定的隧道端口和权重，0 表示用设备组的端口 / 权重 1
-	TunnelPort int       `json:"tunnel_port"`
-	Weight     int       `json:"weight"`
-	RevPort    int       `json:"rev_port"` // 入口节点的反向隧道监听端口，0 表示没有开启
-	IP6        string    `json:"ip6"`      // 节点上报的公网 IPv6 地址，没有则为空
-	LastSeen   time.Time `json:"last_seen"`
-	CreatedAt  time.Time `json:"created_at"`
+	TunnelPort int `json:"tunnel_port"`
+	Weight     int `json:"weight"`
+	// 管理员给这台机器写的备注（同一个设备组里有多台机器时用来区分），显示在探针页
+	Note string `gorm:"size:255" json:"note"`
+	// 管理员在探针页设置的出口权重，优先于节点启动参数 -weight；0 表示没有设置
+	PanelWeight int       `json:"panel_weight"`
+	RevPort     int       `json:"rev_port"` // 入口节点的反向隧道监听端口，0 表示没有开启
+	IP6         string    `json:"ip6"`      // 节点上报的公网 IPv6 地址，没有则为空
+	LastSeen    time.Time `json:"last_seen"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // nodeOnlineWindow 是节点多久没有同步就算离线，可用启动参数 -offline-node-time 调整。
 var nodeOnlineWindow = 35 * time.Second
 
 func (n *Node) online() bool { return time.Since(n.LastSeen) < nodeOnlineWindow }
+
+// weight 返回出口节点实际生效的负载均衡权重：面板设置 > 节点启动参数 > 1。
+func (n *Node) weight() int {
+	if n.PanelWeight > 0 {
+		return n.PanelWeight
+	}
+	if n.Weight > 0 {
+		return n.Weight
+	}
+	return 1
+}
 
 // host 返回入口连接该出口节点时使用的地址。
 func (n *Node) host() string {

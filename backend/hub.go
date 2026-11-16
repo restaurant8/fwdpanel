@@ -228,7 +228,7 @@ func handleAdminTerminal(c *gin.Context) {
 		return
 	}
 	if !getLive(nc.nodeID).Terminal {
-		deny("该节点没有开启在线终端（启动节点时加 -enable-terminal）")
+		deny("该节点没有开启在线终端（在节点的 start.sh 里给启动命令加上 -enable-terminal 后重启服务）")
 		return
 	}
 

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.9.0"
+const version = "0.9.1"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
@@ -85,7 +85,8 @@ type syncReq struct {
 	Name      string              `json:"name"`
 	Version   string              `json:"version"`
 	Advertise string              `json:"advertise"`
-	Conns     int64               `json:"conns"`
+	Conns     int64               `json:"conns"`     // TCP 连接数 + UDP 会话数
+	ConnsUDP  int64               `json:"conns_udp"` // 其中的 UDP 会话数
 	Rules     map[uint]ruleStatus `json:"rules"`
 	Traffic   map[uint]int64      `json:"traffic"`
 	Status    sysStatus           `json:"status"`
@@ -95,14 +96,16 @@ type syncReq struct {
 	Weight     int    `json:"weight"`
 	RevPort    int    `json:"rev_port"` // 入口的反向隧道监听端口
 	IPv6       string `json:"ipv6"`     // 本机的公网 IPv6 地址，没有则为空
+	IPv4       string `json:"ipv4"`     // 本机的公网 IPv4 地址，探测不到则为空（面板用它看到的来源地址）
 }
 
 // ---------- 流量与连接数统计 ----------
 
 var (
-	activeConns atomic.Int64
-	trafficMu   sync.Mutex
-	traffic     = map[uint]int64{}
+	tcpConns  atomic.Int64 // 正在转发的 TCP 连接数
+	udpConns  atomic.Int64 // 正在转发的 UDP 会话数（一个客户端地址算一个，空闲超时后结束）
+	trafficMu sync.Mutex
+	traffic   = map[uint]int64{}
 )
 
 func addTraffic(rule uint, n int64) {
@@ -220,11 +223,12 @@ func main() {
 	for {
 		t := takeTraffic()
 		req := syncReq{UID: uid, Name: *name, Version: version, Advertise: *advertise,
-			Conns: activeConns.Load(), Rules: in.statuses(), Traffic: t,
+			Conns: tcpConns.Load() + udpConns.Load(), ConnsUDP: udpConns.Load(), Rules: in.statuses(), Traffic: t,
 			Status: probe.collect(), Terminal: *enableTerm, TunnelPort: localTunnelPort, Weight: *weight, RevPort: *revPort, IPv6: *advertise6}
 		if req.IPv6 == "" {
 			req.IPv6 = detectIPv6()
 		}
+		req.IPv4 = detectIPv4()
 		resp, err := doSync(client, url, *token, &req)
 		interval := 10
 		if err != nil {

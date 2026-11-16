@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App as AntApp, Tooltip } from 'antd'
+import { App as AntApp, Button, Input, InputNumber, Modal, Popconfirm, Tooltip } from 'antd'
 import {
-  ArrowUpOutlined, CheckCircleOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, UploadOutlined,
+  ApiOutlined, ArrowUpOutlined, CheckCircleOutlined, ControlOutlined, EditOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, UploadOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { api, NodeStatus, StatusGroup, StatusNode } from '../api'
@@ -30,6 +30,20 @@ export default function Status() {
   const [asUser, setAsUser] = useState(false) // 切换视角：以普通用户的视角看（隐藏 IP 和操作）
   const [term, setTerm] = useState<StatusNode | null>(null)
   const [detail, setDetail] = useState<StatusNode | null>(null)
+  const [weightOf, setWeightOf] = useState<StatusNode | null>(null) // 正在设置出口权重的节点
+  const [weight, setWeight] = useState<number | null>(1)
+  const [noteOf, setNoteOf] = useState<StatusNode | null>(null) // 正在编辑备注的节点
+  const [note, setNote] = useState('')
+  const [apiKey, setApiKey] = useState<string | null>(null) // null: 没有打开 API 弹窗；'': 没有启用
+  const openApi = () => api<{ key: string }>('GET', '/user/probe_api').then((r) => setApiKey(r.key), (e) => message.error(String(e.message || e)))
+  const keyAction = (method: string, path: string, ok: string) =>
+    api<{ key: string }>(method, path).then(
+      (r) => {
+        setApiKey(r.key)
+        message.success(ok)
+      },
+      (e) => message.error(String(e.message || e)),
+    )
 
   const load = useCallback(() => api<StatusGroup[]>('GET', '/status').then(setGroups).catch(() => {}), [])
   useEffect(() => {
@@ -57,6 +71,9 @@ export default function Status() {
     <div style={{ minHeight: '100vh', color: '#1d1b20', fontSize: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 20px', fontWeight: 500 }}>
         <a href="#/" style={{ color: 'inherit', flex: 1 }}><HomeOutlined style={{ fontSize: 18, marginRight: 10 }} />主页</a>
+        <span style={{ cursor: 'pointer', marginRight: 28 }} onClick={openApi}>
+          <ApiOutlined style={{ fontSize: 18, marginRight: 10 }} />API
+        </span>
         {user.admin && (
           <span style={{ cursor: 'pointer' }} onClick={() => setAsUser(!asUser)}>
             <UserOutlined style={{ fontSize: 18, marginRight: 10 }} />切换视角（当前: {asUser ? '用户' : '管理员'}）
@@ -98,9 +115,16 @@ export default function Status() {
                               </span>
                             </Tooltip>
                           </td>
-                          <td style={td}><span style={{ ...chip, padding: '6px 14px' }}>{n.name}</span></td>
+                          <td style={td}>
+                            <span style={{ ...chip, padding: '6px 14px' }}>{n.name}</span>
+                            {n.note && <div style={{ marginTop: 8, fontSize: 12, color: '#79747e', whiteSpace: 'normal', maxWidth: 220 }}>{n.note}</div>}
+                          </td>
                           {admin && <td style={td}>{n.ip}{n.ip6 && <><br />{n.ip6}</>}</td>}
-                          <td style={td}>{s ? <>{fmtRate(s.net_tx)}↑<br />{fmtRate(s.net_rx)}↓</> : '-'}</td>
+                          <td style={td}>
+                            <Tooltip title={<>TCP 连接: {n.conns_tcp}<br />UDP 会话: {n.conns_udp}</>}>
+                              <span style={{ display: 'inline-block', cursor: 'default' }}>{s ? <>{fmtRate(s.net_tx)}↑<br />{fmtRate(s.net_rx)}↓</> : '-'}</span>
+                            </Tooltip>
+                          </td>
                           <td style={td}>{s ? fmtDuration(s.uptime) : '-'}</td>
                           <td style={td}>{s ? <>{fmtBytes((s as any).net_tx_total ?? 0)}↑<br />{fmtBytes((s as any).net_rx_total ?? 0)}↓</> : '-'}</td>
                           <td style={td}>{s ? <Bar pct={s.cpu} color="#e91e63" /> : '-'}</td>
@@ -115,6 +139,14 @@ export default function Status() {
                                     (e) => message.error(String(e.message || e)),
                                   ),
                                 )}
+                              {g.type === 'out' && iconBtn(`出口权重（当前 ${n.weight}）`, <ControlOutlined />, () => {
+                                setWeight(n.weight)
+                                setWeightOf(n)
+                              })}
+                              {iconBtn('备注', <EditOutlined />, () => {
+                                setNote(n.note)
+                                setNoteOf(n)
+                              })}
                               {n.terminal && iconBtn('在线终端', <CodeOutlined />, () => setTerm(n))}
                               {iconBtn('详情', <InfoCircleOutlined />, () => setDetail(detail?.id === n.id ? null : n))}
                             </td>
@@ -135,6 +167,89 @@ export default function Status() {
         })}
       </div>
       <TerminalModal node={term} onClose={() => setTerm(null)} />
+      <Modal
+        title={`备注 - ${noteOf?.name ?? ''}`}
+        open={!!noteOf}
+        okText="保存"
+        cancelText="取消"
+        onCancel={() => setNoteOf(null)}
+        onOk={() =>
+          api('PUT', `/admin/nodes/${noteOf!.id}/note`, { note }).then(
+            () => {
+              message.success('已保存')
+              setNoteOf(null)
+              load()
+            },
+            (e) => message.error(String(e.message || e)),
+          )
+        }
+      >
+        <Input maxLength={80} showCount value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：洛杉矶 CN2 / 备用机" />
+        <p style={{ color: '#79747e', margin: '10px 0 0' }}>
+          同一个设备组里有多台机器时用来区分。备注显示在探针页的节点名称下面，能看到这个节点的用户都能看到，探针 API 也会返回。留空即清除。
+        </p>
+      </Modal>
+      <Modal title="探针 API" open={apiKey !== null} footer={null} width={680} onCancel={() => setApiKey(null)}>
+        <p style={{ color: '#79747e' }}>
+          给监控脚本、机器人等外部程序用的接口。这是你个人的密钥：用它能读到的内容和你在本页看到的一样{user.admin ? '，管理员的密钥还可以设置出口权重、升级节点' : ''}。
+          密钥只能访问这几个接口，不能用来登录。
+        </p>
+        {apiKey ? (
+          <>
+            <Input.Password readOnly value={apiKey} addonBefore="密钥" />
+            <div style={{ margin: '12px 0', display: 'flex', gap: 10 }}>
+              <Button onClick={() => navigator.clipboard.writeText(apiKey).then(() => message.success('已复制'))}>复制密钥</Button>
+              <Popconfirm title="重置后旧密钥立即失效，确定吗？" onConfirm={() => keyAction('POST', '/user/probe_api/reset', '已生成新密钥')}>
+                <Button>重置密钥</Button>
+              </Popconfirm>
+              <Popconfirm title="停用后外部程序将无法访问，确定吗？" onConfirm={() => keyAction('DELETE', '/user/probe_api', '已停用')}>
+                <Button danger>停用</Button>
+              </Popconfirm>
+            </div>
+            <pre style={{ background: '#f3edf7', borderRadius: 8, padding: 12, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+{`# 你能看到的设备组和节点（速率、连接数、权重、CPU、内存等）
+curl -H "X-API-Key: 密钥" ${location.origin}/api/v1/open/status
+
+# 单个节点
+curl -H "X-API-Key: 密钥" ${location.origin}/api/v1/open/nodes/节点ID` + (user.admin ? `
+
+# （管理员）设置出口权重（0 恢复默认）
+curl -X PUT -H "X-API-Key: 密钥" -H "Content-Type: application/json" -d '{"weight": 5}' ${location.origin}/api/v1/open/nodes/节点ID/weight
+
+# （管理员）设置节点备注（空字符串清除）
+curl -X PUT -H "X-API-Key: 密钥" -H "Content-Type: application/json" -d '{"note": "洛杉矶 CN2"}' ${location.origin}/api/v1/open/nodes/节点ID/note
+
+# （管理员）升级节点到面板内置的版本
+curl -X POST -H "X-API-Key: 密钥" ${location.origin}/api/v1/open/nodes/节点ID/upgrade` : '')}
+            </pre>
+            <p style={{ color: '#79747e', margin: 0 }}>也可以用请求头 Authorization: Bearer 密钥。节点 ID 在 status 返回的数据里。</p>
+          </>
+        ) : (
+          <Button type="primary" onClick={() => keyAction('POST', '/user/probe_api/reset', '已生成密钥')}>生成密钥并启用</Button>
+        )}
+      </Modal>
+      <Modal
+        title={`出口权重 - ${weightOf?.name ?? ''}`}
+        open={!!weightOf}
+        okText="保存"
+        cancelText="取消"
+        onCancel={() => setWeightOf(null)}
+        onOk={() =>
+          api('PUT', `/admin/nodes/${weightOf!.id}/weight`, { weight: weight ?? 0 }).then(
+            () => {
+              message.success('已保存，入口节点会立即按新权重分配连接')
+              setWeightOf(null)
+              load()
+            },
+            (e) => message.error(String(e.message || e)),
+          )
+        }
+      >
+        <InputNumber min={0} max={10000} precision={0} value={weight} onChange={setWeight} style={{ width: '100%' }} />
+        <p style={{ color: '#79747e', margin: '10px 0 0' }}>
+          同一出口组内，入口按权重比例把新连接分配给各个出口节点。填 0 恢复默认（节点启动参数 -weight，没有则为 1）。
+        </p>
+      </Modal>
     </div>
   )
 }

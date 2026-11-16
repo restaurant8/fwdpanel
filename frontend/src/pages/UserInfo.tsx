@@ -20,7 +20,7 @@ export default function UserInfo() {
   const canEgress = site.allow_user_egress || user.admin
   const loadEgress = () => api('GET', '/user/egress').then(setEgress).catch(() => {})
   const egressCmd = (token: string) =>
-    `bash <(curl -fLSs ${window.location.origin}/download/install.sh) -panel ${window.location.origin} -token ${token}`
+    `TERMINAL=0 bash <(curl -fLSs ${window.location.origin}/download/install.sh) -panel ${window.location.origin} -token ${token}`
 
   useEffect(() => {
     reload().then(() => message.success('刷新用户信息成功'))

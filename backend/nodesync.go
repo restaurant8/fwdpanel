@@ -19,7 +19,8 @@ type syncReq struct {
 	Name      string `json:"name"`
 	Version   string `json:"version"`
 	Advertise string `json:"advertise"`
-	Conns     int    `json:"conns"`
+	Conns     int    `json:"conns"`     // TCP 连接数 + UDP 会话数
+	ConnsUDP  int    `json:"conns_udp"` // 其中的 UDP 会话数；旧版节点不带，全部算作 TCP
 	// 入口节点上报的各规则监听状态
 	Rules map[uint]struct {
 		OK  bool   `json:"ok"`
@@ -36,6 +37,7 @@ type syncReq struct {
 	Weight     int    `json:"weight"`
 	RevPort    int    `json:"rev_port"`
 	IPv6       string `json:"ipv6"`
+	IPv4       string `json:"ipv4"` // 节点自己探测到的公网 IPv4，旧版节点不带
 }
 
 type syncOut struct {
@@ -121,13 +123,14 @@ func handleNodeSync(c *gin.Context) {
 	var node Node
 	db.Where(Node{GroupID: g.ID, UID: req.UID}).FirstOrCreate(&node)
 	node.Name, node.Version, node.Advertise = req.Name, req.Version, req.Advertise
-	node.IP, node.Conns, node.LastSeen = c.ClientIP(), req.Conns, time.Now()
+	node.IP, node.Conns, node.LastSeen = nodeIP(c.ClientIP(), req.IPv4), req.Conns, time.Now()
 	node.TunnelPort, node.Weight, node.RevPort = req.TunnelPort, req.Weight, req.RevPort
+	node.ConnsUDP = min(max(req.ConnsUDP, 0), req.Conns)
 	node.IP6 = ""
 	if ip := net.ParseIP(req.IPv6); ip != nil && ip.To4() == nil {
 		node.IP6 = ip.String()
 	}
-	db.Save(&node)
+	db.Omit("PanelWeight", "Note").Save(&node) // 权重和备注由管理员在探针页设置，同步时不要覆盖
 	setLive(node.ID, nodeLive{Status: req.Status, Terminal: req.Terminal})
 
 	recordTraffic(&g, req.Traffic)
@@ -250,6 +253,42 @@ func handleNodeSync(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
+var nonPublicV4 = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, s := range []string{
+		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",
+		"198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4",
+	} {
+		_, n, _ := net.ParseCIDR(s)
+		out = append(out, n)
+	}
+	return out
+}()
+
+// isPublicV4 判断是不是可以从公网直接访问的 IPv4 地址。
+func isPublicV4(ip net.IP) bool {
+	ip = ip.To4()
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	for _, n := range nonPublicV4 {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+// nodeIP 决定节点的 IPv4 地址：优先用节点自己探测并上报的公网地址，没有才用面板看到的来源地址。
+// 来源地址在这些情况下不是节点的真实地址：节点与面板同机（127.0.0.1）、面板在 CDN 或反向代理之后、
+// 节点经代理访问面板、节点经 IPv6 访问面板。
+func nodeIP(seen, reported string) string {
+	if ip := net.ParseIP(reported); isPublicV4(ip) {
+		return ip.To4().String()
+	}
+	return seen
+}
+
 // tunnelProto 把界面上的协议名映射成节点端实际使用的传输方式。
 // tls_simple -> tls；ws 和 http 都走 WebSocket 传输（节点端没有单独实现 http 伪装）。
 func tunnelProto(g *DeviceGroup) string {
@@ -347,12 +386,9 @@ func outInfo(g *DeviceGroup, preferV6 bool) *syncOut {
 		if host == "" {
 			continue
 		}
-		port, weight := g.TunnelPort, 1
+		port, weight := g.TunnelPort, n.weight()
 		if n.TunnelPort > 0 {
 			port = n.TunnelPort
-		}
-		if n.Weight > 0 {
-			weight = n.Weight
 		}
 		o.Addrs = append(o.Addrs, net.JoinHostPort(host, strconv.Itoa(port)))
 		o.Weights = append(o.Weights, weight)

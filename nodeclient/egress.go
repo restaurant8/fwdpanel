@@ -256,5 +256,9 @@ func (e *egress) serve(c net.Conn, line string) {
 		relayUDPStream(c, up, hello.Rule)
 		return
 	}
+	if isUDP {
+		relayCounted(c, up, hello.Rule, nil, &udpConns) // 链式出口的中间一跳，转交的是 UDP 流量
+		return
+	}
 	relay(c, up, hello.Rule, nil)
 }
