@@ -318,15 +318,57 @@ func handleDeleteRule(c *gin.Context) {
 	c.JSON(200, gin.H{"ok": true})
 }
 
-// handleBatchRules 批量导入，一行一个：名称#监听端口#目标地址#目标端口
-// 监听端口留空则随机分配。
+// batchRuleReq 同时读取本站导出字段和 nyanpass 的目标地址及发送代理协议字段。
+type batchRuleReq struct {
+	ruleReq
+	Dest          []string `json:"dest"`
+	ProxyProtocol int      `json:"proxy_protocol"`
+	SendPP        *int     `json:"send_pp"`
+}
+
+func (item batchRuleReq) request() ruleReq {
+	req := item.ruleReq
+	if req.Targets == "" {
+		req.Targets = strings.Join(item.Dest, "\n")
+	}
+	req.SendPP = item.ProxyProtocol
+	if item.SendPP != nil {
+		req.SendPP = *item.SendPP
+	}
+	return req
+}
+
+func parseBatchRuleLine(line string) (ruleReq, error) {
+	parts := strings.Split(line, "#")
+	if strings.HasPrefix(line, "{") {
+		var item batchRuleReq
+		if err := json.Unmarshal([]byte(line), &item); err == nil {
+			return item.request(), nil
+		} else if len(parts) != 4 {
+			return ruleReq{}, fmt.Errorf("JSON 规则格式错误")
+		}
+	}
+	if len(parts) != 4 {
+		return ruleReq{}, fmt.Errorf("格式应为 名称#监听端口#目标地址#目标端口 或一行一个 JSON 对象")
+	}
+	port := 0
+	if parts[1] != "" {
+		var err error
+		if port, err = strconv.Atoi(parts[1]); err != nil || port < 1 {
+			return ruleReq{}, fmt.Errorf("监听端口错误")
+		}
+	}
+	return ruleReq{Name: parts[0], ListenPort: port,
+		Targets: net.JoinHostPort(strings.Trim(parts[2], "[]"), parts[3])}, nil
+}
+
+// handleBatchRules 支持导出的 JSON 数组、每行一个 JSON 对象和旧版 # 分隔格式。
 func handleBatchRules(c *gin.Context) {
 	var req struct {
-		InGroupID  uint   `json:"in_group_id"`
-		OutGroupID uint   `json:"out_group_id"`
-		Lines      string `json:"lines"`
-		// Rules 是"批量导出"生成的 JSON。条目自带入口/出口时用自带的，否则用上面选的
-		Rules []ruleReq `json:"rules"`
+		InGroupID  uint           `json:"in_group_id"`
+		OutGroupID uint           `json:"out_group_id"`
+		Lines      string         `json:"lines"`
+		Rules      []batchRuleReq `json:"rules"`
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		fail(c, 400, "请求格式错误")
@@ -335,10 +377,10 @@ func handleBatchRules(c *gin.Context) {
 	u := me(c)
 	created := 0
 	errs := []string{}
-	for i, rr := range req.Rules {
+	importRule := func(rr ruleReq, location string) bool {
 		if err := checkQuota(u, 1); err != nil {
-			errs = append(errs, err.Error())
-			break
+			errs = append(errs, fmt.Sprintf("%s: %s", location, err.Error()))
+			return false
 		}
 		if rr.InGroupID == 0 {
 			rr.InGroupID, rr.OutGroupID = req.InGroupID, req.OutGroupID
@@ -346,50 +388,34 @@ func handleBatchRules(c *gin.Context) {
 		rr.GroupID = 0 // 分组是导出者自己的，不跟着走
 		r := Rule{UserID: u.ID}
 		if err := applyRuleReq(&r, &rr); err != nil {
-			errs = append(errs, fmt.Sprintf("第 %d 条「%s」: %s", i+1, rr.Name, err.Error()))
-			continue
+			errs = append(errs, fmt.Sprintf("%s: %s", location, err.Error()))
+		} else if err := db.Create(&r).Error; err != nil {
+			errs = append(errs, fmt.Sprintf("%s保存失败: %s", location, err.Error()))
+		} else {
+			created++
 		}
-		if err := db.Create(&r).Error; err != nil {
-			errs = append(errs, "保存失败: "+err.Error())
-			continue
+		return true
+	}
+	for i, item := range req.Rules {
+		rr := item.request()
+		if !importRule(rr, fmt.Sprintf("第 %d 条「%s」", i+1, rr.Name)) {
+			break
 		}
-		created++
 	}
 	for i, line := range strings.Split(req.Lines, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		bad := func(msg string) { errs = append(errs, fmt.Sprintf("第 %d 行: %s", i+1, msg)) }
-		parts := strings.Split(line, "#")
-		if len(parts) != 4 {
-			bad("格式应为 名称#监听端口#目标地址#目标端口")
+		location := fmt.Sprintf("第 %d 行", i+1)
+		rr, err := parseBatchRuleLine(line)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %s", location, err.Error()))
 			continue
 		}
-		port := 0
-		if parts[1] != "" {
-			var err error
-			if port, err = strconv.Atoi(parts[1]); err != nil || port < 1 {
-				bad("监听端口错误")
-				continue
-			}
-		}
-		if err := checkQuota(u, 1); err != nil {
-			bad(err.Error())
+		if !importRule(rr, location) {
 			break
 		}
-		r := Rule{UserID: u.ID}
-		rr := ruleReq{Name: parts[0], InGroupID: req.InGroupID, OutGroupID: req.OutGroupID,
-			ListenPort: port, Targets: net.JoinHostPort(strings.Trim(parts[2], "[]"), parts[3])}
-		if err := applyRuleReq(&r, &rr); err != nil {
-			bad(err.Error())
-			continue
-		}
-		if err := db.Create(&r).Error; err != nil {
-			errs = append(errs, "保存失败: "+err.Error())
-			continue
-		}
-		created++
 	}
 	nudgeAll()
 	c.JSON(200, gin.H{"created": created, "errors": errs})

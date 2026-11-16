@@ -741,6 +741,31 @@ func handleAdminDeleteNode(c *gin.Context) {
 	c.JSON(200, gin.H{"ok": true})
 }
 
+// handleAdminDeleteOfflineNodes 在删除时用探针页的在线时限检查最后心跳。
+func handleAdminDeleteOfflineNodes(c *gin.Context) {
+	var req struct {
+		ID  uint `json:"id"`
+		All bool `json:"all"`
+	}
+	if c.ShouldBindJSON(&req) != nil || (req.ID == 0 && !req.All) || (req.ID != 0 && req.All) {
+		fail(c, 400, "请选择一个节点或所有离线节点")
+		return
+	}
+	q := db.Where("last_seen <= ?", time.Now().Add(-nodeOnlineWindow))
+	if !req.All {
+		q = q.Where("id = ?", req.ID)
+	}
+	result := q.Delete(&Node{})
+	if dbFail(c, result.Error) {
+		return
+	}
+	if !req.All && result.RowsAffected == 0 {
+		fail(c, 409, "节点已恢复在线或已被删除")
+		return
+	}
+	c.JSON(200, gin.H{"deleted": result.RowsAffected})
+}
+
 // handleAdminNodeWeight 设置出口节点的负载均衡权重。0 表示恢复默认（节点启动参数 -weight，没有则为 1）。
 func handleAdminNodeWeight(c *gin.Context) {
 	var req struct {

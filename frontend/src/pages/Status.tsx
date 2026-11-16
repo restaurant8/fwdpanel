@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App as AntApp, Button, Input, InputNumber, Modal, Popconfirm, Tooltip } from 'antd'
+import { App as AntApp, Button, Checkbox, Input, InputNumber, Modal, Popconfirm, Tooltip } from 'antd'
 import {
-  ApiOutlined, ArrowUpOutlined, CheckCircleOutlined, ControlOutlined, EditOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, UploadOutlined,
+  ApiOutlined, ArrowUpOutlined, CheckCircleOutlined, ControlOutlined, DeleteOutlined, EditOutlined, CodeOutlined, DownloadOutlined, HomeOutlined, InfoCircleOutlined, MinusCircleOutlined, UploadOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { api, NodeStatus, StatusGroup, StatusNode } from '../api'
 import { useAuth } from '../App'
-import { fmtBytes, fmtDuration, fmtRate } from '../util'
+import { errMsg, fmtBytes, fmtDuration, fmtRate } from '../util'
 import TerminalModal from '../components/TerminalModal'
 
 const purple = '#65558f'
@@ -25,7 +25,7 @@ const pct = (used: number, total: number) => (total ? (used / total) * 100 : 0)
 
 export default function Status() {
   const { user, site } = useAuth()
-  const { message } = AntApp.useApp()
+  const { message, modal } = AntApp.useApp()
   const [groups, setGroups] = useState<StatusGroup[]>([])
   const [asUser, setAsUser] = useState(false) // 切换视角：以普通用户的视角看（隐藏 IP 和操作）
   const [term, setTerm] = useState<StatusNode | null>(null)
@@ -55,6 +55,26 @@ export default function Status() {
       document.body.style.background = ''
     }
   }, [load])
+
+  const confirmDelete = (node: StatusNode) => {
+    let all = false
+    modal.confirm({
+      title: `删除离线节点「${node.name}」？`,
+      content: <Checkbox onChange={(e) => { all = e.target.checked }}>同时删除所有离线节点</Checkbox>,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const { deleted } = await api<{ deleted: number }>('POST', '/admin/nodes/delete_offline', all ? { all: true } : { id: node.id })
+          message.success(deleted ? `已删除 ${deleted} 个离线节点` : '当前没有离线节点')
+        } catch (e) {
+          message.error(errMsg(e))
+        }
+        await load()
+      },
+    })
+  }
 
   const admin = user.admin && !asUser
   const iconBtn = (title: string, icon: React.ReactNode, onClick: () => void) => (
@@ -149,6 +169,9 @@ export default function Status() {
                               })}
                               {n.terminal && iconBtn('在线终端', <CodeOutlined />, () => setTerm(n))}
                               {iconBtn('详情', <InfoCircleOutlined />, () => setDetail(detail?.id === n.id ? null : n))}
+                              {!n.online && (
+                                <Button danger icon={<DeleteOutlined />} onClick={() => confirmDelete(n)}>删除</Button>
+                              )}
                             </td>
                           )}
                         </tr>

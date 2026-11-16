@@ -230,6 +230,7 @@ func registerRoutes(api *gin.RouterGroup) {
 	a.POST("/groups/:id/token", handleAdminResetGroupToken)
 	a.GET("/nodes", handleAdminListNodes)
 	a.DELETE("/nodes/:id", handleAdminDeleteNode)
+	a.POST("/nodes/delete_offline", handleAdminDeleteOfflineNodes)
 	a.POST("/nodes/:id/upgrade", handleAdminUpgradeNode)
 	a.POST("/nodes/upgrade_all", handleAdminUpgradeAllNodes)
 	a.GET("/update", handleAdminUpdateInfo)

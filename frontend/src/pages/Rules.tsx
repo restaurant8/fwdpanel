@@ -250,7 +250,7 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
       } catch {
         return message.error('JSON 格式错误')
       }
-    } else body = { ...body, lines: text }
+    } else body = { ...body, lines: imp.lines }
     try {
       const res = await api<BatchResult>('POST', '/rules/batch', body)
       message.success(`已导入 ${res.created} 条规则`)
@@ -640,7 +640,7 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
           </Field>
         )}
         <Field label="批量规则">
-          <Input.TextArea rows={6} placeholder="一行一个，空行会被忽略。" value={imp.lines} onChange={(e) => setImp({ ...imp, lines: e.target.value })} />
+          <Input.TextArea rows={6} placeholder="粘贴导出的 JSON，或一行一条规则。空行会被忽略。" value={imp.lines} onChange={(e) => setImp({ ...imp, lines: e.target.value })} />
         </Field>
         <Collapse
           items={[
@@ -649,9 +649,9 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
               label: 'JSON 设置',
               children: (
                 <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                  旧格式一行一个：名称#监听端口#目标地址#目标端口，监听端口留空则随机。
+                  支持本站批量导出的 JSON 数组、nyanpass 每行一条的 JSON，以及名称#监听端口#目标地址#目标端口。
                   <br />
-                  也可以直接粘贴"批量导出"生成的 JSON；条目自带入口/出口时以自带的为准，listen_port 为 0 表示随机。
+                  规则自带入口和出口时沿用规则的设置，否则使用上方所选设备组。JSON 的 listen_port 为 0 或旧格式的监听端口留空时随机分配。
                 </Typography.Paragraph>
               ),
             },
