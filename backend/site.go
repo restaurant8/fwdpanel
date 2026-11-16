@@ -11,10 +11,10 @@ import (
 )
 
 // 用 var 而不是 const：测试在线升级时可以用 -ldflags "-X main.panelVersion=..." 构建一个"旧版本"
-var panelVersion = "0.9.3"
+var panelVersion = "0.9.4"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.9.3"
+const nodeVersion = "0.9.4"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //
