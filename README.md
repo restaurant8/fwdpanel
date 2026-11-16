@@ -56,7 +56,8 @@ scripts/     build.sh 构建，demo.sh 本机演示
   出口组 `connect_type` 设为 `dyn_ip6` 强制用 IPv6（不回落），`dyn_ip4` 强制用 IPv4
 - 反向隧道（内网穿透）：出口在内网时由出口主动连到入口。入口节点启动加 `-rev-port 端口`，入口组高级配置里设置 `reverse_group`
 - 规则诊断：让入口节点按真实转发路径连一次目标，返回耗时
-- 远程升级：探针页对版本落后的节点显示升级按钮，节点从面板下载新版本后原地重启
+- 面板在线升级：仪表盘显示当前版本和 GitHub 上的最新版本，点「一键升级」后面板下载发布包、核对 sha256、替换程序并原地重启（旧程序留作 `panel.bak`）；`-update-repo` 可换仓库，留空关闭
+- 远程升级：探针页对版本落后的节点显示升级按钮，节点从面板下载新版本后原地重启；仪表盘的「升级全部节点」一次升级所有落后的在线节点
 - 环境变量：`DISABLE_EXECUTE`、`BIND_INBOUND`、`BIND_OUTBOUND_4/6`、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、`HEALTH_CHECK`、`UUID`、`NYA_PROXY`
   （写在节点安装目录的 `env.sh` 里，然后重启服务）
 - 配置文件模式：不带参数启动时读取当前目录的 `config.yml`（`base-url`、`token` 等）
@@ -146,7 +147,7 @@ bash <(curl -fLSs https://github.com/restaurant8/fwdpanel/releases/latest/downlo
 ```
 
 脚本会按机器架构（amd64 / arm64）从 GitHub Releases 下载最新的发布包并安装。后面可以直接跟参数，例如 `... install.sh) -domain 你的域名`。
-升级也是再运行一次这条命令。`VERSION=v0.9.0` 可安装指定版本。
+升级有两种方式：在面板的「仪表盘」里点「一键升级」（0.9.2 起，面板自己下载、校验并重启，不用登录服务器），或者再运行一次这条命令（不带参数，保留原来的全部启动参数）。面板升级后，在仪表盘点「升级全部节点」把节点也升到对应版本。`VERSION=v0.9.0` 可安装指定版本。
 
 服务器连不上 GitHub 时，在 Releases 页面下载对应架构的包传上去，然后：
 

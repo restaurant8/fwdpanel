@@ -48,6 +48,7 @@ func main() {
 	retention := flag.Int("offline-node-retention", 86400, "离线节点的记录保留多少秒后自动删除（最低 600，0 表示不删除）")
 	loginRate := flag.String("login-rate", "5/5", "登录/注册的频率限制，格式 次数/秒数，按来源 IP 计；留空不限制")
 	userRate := flag.String("user-rate", "", "登录后接口的频率限制，格式 次数/秒数，按用户计；默认不限制")
+	flag.StringVar(&updateRepo, "update-repo", updateRepo, "在线升级使用的 GitHub 仓库（用户/仓库）；留空关闭在线升级")
 	resetPw := flag.String("reset-password", "", "重置指定用户的密码并退出")
 	clean := flag.Int("clean", 0, "清理数据并退出：1 失效规则，2 已过期且没有规则的普通用户")
 	copyTo := flag.String("copy-database", "", "把全部数据复制到另一个数据库（连接串）并退出，目标库同名表会被覆盖")
@@ -230,6 +231,9 @@ func registerRoutes(api *gin.RouterGroup) {
 	a.GET("/nodes", handleAdminListNodes)
 	a.DELETE("/nodes/:id", handleAdminDeleteNode)
 	a.POST("/nodes/:id/upgrade", handleAdminUpgradeNode)
+	a.POST("/nodes/upgrade_all", handleAdminUpgradeAllNodes)
+	a.GET("/update", handleAdminUpdateInfo)
+	a.POST("/update", handleAdminUpdateApply)
 	a.PUT("/nodes/:id/weight", handleAdminNodeWeight)
 	a.PUT("/nodes/:id/note", handleAdminNodeNote)
 }

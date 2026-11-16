@@ -7,7 +7,8 @@
 #   bash install.sh                         # 引导模式：一步步询问域名或端口
 #   bash install.sh -port 9000              # 不提问，HTTP，监听指定端口
 #   bash install.sh -domain ny.example.com  # 不提问，自动申请 HTTPS 证书，监听 443/80（域名需已解析到本机）
-# 已经装过时不带参数再运行一次即为升级：只替换程序，保留数据和原来的域名/端口。
+# 已经装过时不带参数再运行一次即为升级：只替换程序，保留数据和原来的全部启动参数。
+# 0.9.2 起也可以不登录服务器，直接在面板的「仪表盘」里点「一键升级」。
 # 环境变量（仅在线安装）：REPO=用户/仓库 换下载来源；VERSION=v0.9.0 安装指定版本（默认最新）。
 set -e
 
@@ -47,6 +48,7 @@ ask() { # 提示语 默认值 -> 用户输入（回车取默认值）
 if [ "$ARGC" = "0" ] && [ -f "$UNIT" ]; then
   # 已经装过、这次又没给参数：当作升级，沿用上次的域名/端口设置
   OLD="$(grep '^ExecStart=' "$UNIT")"
+  KEEP_EXEC="$OLD" # 升级时原样保留启动命令，手动加过的参数（-db、-allow-register 等）不会丢
   case "$OLD" in
     *"-domain "*) DOMAIN="$(echo "$OLD" | sed 's/.*-domain \([^ ]*\).*/\1/')" ;;
     *"-listen :"*) PORT="$(echo "$OLD" | sed 's/.*-listen :\([0-9]*\).*/\1/')" ;;
@@ -117,7 +119,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=$DIR/panel -db $DIR/data/panel.db $ARGS
+${KEEP_EXEC:-ExecStart=$DIR/panel -db $DIR/data/panel.db $ARGS}
 WorkingDirectory=$DIR
 Restart=always
 RestartSec=3
@@ -133,7 +135,8 @@ sleep 2
 systemctl is-active --quiet fwdpanel || { echo "启动失败，请查看日志: journalctl -u fwdpanel -n 50"; exit 1; }
 
 echo
-echo "================ 安装完成 ================"
+echo "================ ${KEEP_EXEC:+升级完成}${KEEP_EXEC:-安装完成} ================"
+[ -n "${KEEP_EXEC:-}" ] && echo "以后升级不用再登录服务器：在面板的「仪表盘」里点「一键升级」即可。"
 echo "面板地址:  $URL"
 if [ -f "$DIR/data/admin-password.txt" ]; then
   echo "管理员:    admin"
