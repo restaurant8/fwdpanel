@@ -128,6 +128,7 @@ type Node struct {
 	TunnelPort int       `json:"tunnel_port"`
 	Weight     int       `json:"weight"`
 	RevPort    int       `json:"rev_port"` // 入口节点的反向隧道监听端口，0 表示没有开启
+	IP6        string    `json:"ip6"`      // 节点上报的公网 IPv6 地址，没有则为空
 	LastSeen   time.Time `json:"last_seen"`
 	CreatedAt  time.Time `json:"created_at"`
 }

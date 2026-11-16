@@ -45,6 +45,8 @@ scripts/     build.sh 构建，demo.sh 本机演示
 - 出口故障判定：连续失败 `max_fail` 次后在 `fail_timeout_sec` 秒内不再使用；每 10 秒主动探测一次
 - 出口节点可单独指定隧道端口（`-tunnel-port`）和权重（`-weight`）；出口组可设置静态连接地址和 ws 的 host/path（经 CDN、NAT 时用）
 - 入站屏蔽（入口高级配置）：`blocked_protocol`（socks/http/tls）、`blocked_host`、`allowed_host`、`blocked_path`
+- IPv6：节点自动探测并上报公网 IPv6。入口组高级配置 `ipv6_group` 指定连接哪些出口时优先用 IPv6（没有则回落到 IPv4）；
+  出口组 `connect_type` 设为 `dyn_ip6` 强制用 IPv6（不回落），`dyn_ip4` 强制用 IPv4
 - 反向隧道（内网穿透）：出口在内网时由出口主动连到入口。入口节点启动加 `-rev-port 端口`，入口组高级配置里设置 `reverse_group`
 - 规则诊断：让入口节点按真实转发路径连一次目标，返回耗时
 - 远程升级：探针页对版本落后的节点显示升级按钮，节点从面板下载新版本后原地重启
@@ -94,7 +96,7 @@ scripts/     build.sh 构建，demo.sh 本机演示
 
 - TLS 入站的整流选项
 - 原生 UDP 转发协议（目前 UDP 经隧道时走 UDP over TCP）
-- 屏蔽"全加密流量"(fet)、按 IPv6 优先连接出口（ipv6_group）、本地 group.json 覆盖
+- 屏蔽"全加密流量"(fet)、本地 group.json 覆盖
 - `NYA_PROXY` 只支持 http 和 socks5 代理
 - 隧道的流量伪装选项（伪造 HTTP 头、伪装 TLS 指纹）：有意不实现
 - 限速和 IP/连接数限制不跨节点汇总
@@ -104,6 +106,7 @@ scripts/     build.sh 构建，demo.sh 本机演示
 在一台 Ubuntu 24.04 (x86_64) 服务器上实测过：
 - 面板安装脚本（安装、重复运行升级）、节点在线安装（自动选择 amd64v3）、离线部署包、卸载、开机自启
 - tls / ws 隧道、直接转发、UDP、TLS 入站、诊断、在线终端、探针数据
+- IPv6 隧道连接（节点探测到公网 IPv6，开启后入口确实经 IPv6 连到出口）
 - 引导式安装与升级、反向隧道（用防火墙挡住出口端口后验证）
 - 远程升级（下载后原地重启，转发不中断）、`OUTBOUND_FWMARK`、`COUNT_INTERFACE`、`BIND_INBOUND`
 - SQLite、MariaDB 10.11、PostgreSQL 16，以及三者之间的 `-copy-database`

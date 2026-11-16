@@ -99,7 +99,7 @@ export default function Status() {
                             </Tooltip>
                           </td>
                           <td style={td}><span style={{ ...chip, padding: '6px 14px' }}>{n.name}</span></td>
-                          {admin && <td style={td}>{n.ip}</td>}
+                          {admin && <td style={td}>{n.ip}{n.ip6 && <><br />{n.ip6}</>}</td>}
                           <td style={td}>{s ? <>{fmtRate(s.net_tx)}↑<br />{fmtRate(s.net_rx)}↓</> : '-'}</td>
                           <td style={td}>{s ? fmtDuration(s.uptime) : '-'}</td>
                           <td style={td}>{s ? <>{fmtBytes((s as any).net_tx_total ?? 0)}↑<br />{fmtBytes((s as any).net_rx_total ?? 0)}↓</> : '-'}</td>

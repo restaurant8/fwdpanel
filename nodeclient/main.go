@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const version = "0.7.0"
+const version = "0.8.0"
 
 // localTunnelPort 是启动参数 -tunnel-port 指定的出口隧道端口，0 表示用设备组的设置。
 var localTunnelPort int
@@ -91,9 +91,10 @@ type syncReq struct {
 	Status    sysStatus           `json:"status"`
 	Terminal  bool                `json:"terminal"`
 	// 出口节点自己指定的隧道端口和权重（0 表示用设备组的设置 / 默认权重 1）
-	TunnelPort int `json:"tunnel_port"`
-	Weight     int `json:"weight"`
-	RevPort    int `json:"rev_port"` // 入口的反向隧道监听端口
+	TunnelPort int    `json:"tunnel_port"`
+	Weight     int    `json:"weight"`
+	RevPort    int    `json:"rev_port"` // 入口的反向隧道监听端口
+	IPv6       string `json:"ipv6"`     // 本机的公网 IPv6 地址，没有则为空
 }
 
 // ---------- 流量与连接数统计 ----------
@@ -150,6 +151,7 @@ func main() {
 	name := flag.String("name", "", "节点名称，默认使用主机名")
 	enableTerm := flag.Bool("enable-terminal", false, "允许面板管理员通过在线终端在本机执行命令（以本进程的用户身份）")
 	weight := flag.Int("weight", 0, "（出口）负载均衡权重，默认 1")
+	advertise6 := flag.String("advertise6", "", "（出口）本机的 IPv6 地址，默认自动探测")
 	revPort := flag.Int("rev-port", 0, "（入口）反向隧道监听端口。设置后，内网里的出口可以主动连到本入口")
 	flag.IntVar(&localTunnelPort, "tunnel-port", 0, "（出口）隧道监听端口，默认使用设备组的设置")
 	flag.Parse()
@@ -219,7 +221,10 @@ func main() {
 		t := takeTraffic()
 		req := syncReq{UID: uid, Name: *name, Version: version, Advertise: *advertise,
 			Conns: activeConns.Load(), Rules: in.statuses(), Traffic: t,
-			Status: probe.collect(), Terminal: *enableTerm, TunnelPort: localTunnelPort, Weight: *weight, RevPort: *revPort}
+			Status: probe.collect(), Terminal: *enableTerm, TunnelPort: localTunnelPort, Weight: *weight, RevPort: *revPort, IPv6: *advertise6}
+		if req.IPv6 == "" {
+			req.IPv6 = detectIPv6()
+		}
 		resp, err := doSync(client, url, *token, &req)
 		interval := 10
 		if err != nil {

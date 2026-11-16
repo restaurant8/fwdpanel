@@ -460,6 +460,9 @@ type groupConfig struct {
 	// 出口故障判定：连续失败 max_fail 次后，fail_timeout_sec 秒内不再分配新连接
 	MaxFail        int `json:"max_fail,omitempty"`
 	FailTimeoutSec int `json:"fail_timeout_sec,omitempty"`
+	// 连接这些出口组时优先用 IPv6。填出口组 ID；[0] 表示全部优先 IPv6，
+	// [0, 1, 2] 表示全部优先 IPv6、但 1 和 2 仍用 IPv4。出口没有 IPv6 地址时回落到 IPv4
+	IPv6Group []uint `json:"ipv6_group,omitempty"`
 	// 反向隧道：这些出口组由出口主动连入口（出口在内网时用）。填出口组 ID，[0] 表示所有出口组。
 	// 只对启动时带了 -rev-port 的入口节点生效
 	ReverseGroup []uint `json:"reverse_group,omitempty"`
@@ -470,7 +473,8 @@ type groupConfig struct {
 
 	// ---- 出口 ----
 	TunnelPort *int `json:"tunnel_port,omitempty"`
-	// connect_type 为 static 时，入口固定连接 connect_address:connect_port（经 CDN、NAT 或端口映射时用）
+	// connect_type：static 时入口固定连接 connect_address:connect_port（经 CDN、NAT 或端口映射时用）；
+	// dyn_ip4 强制用节点的 IPv4；dyn_ip6 强制用节点的 IPv6（没有 IPv6 的节点不会被使用，不回落）
 	ConnectType    string `json:"connect_type,omitempty"`
 	ConnectAddress string `json:"connect_address,omitempty"`
 	ConnectPort    int    `json:"connect_port,omitempty"`
@@ -509,6 +513,7 @@ func (c *groupConfig) validate() string {
 	}
 	switch c.ConnectType {
 	case "":
+	case "dyn_ip4", "dyn_ip6":
 	case "static":
 		if c.ConnectAddress == "" {
 			return "connect_type 为 static 时需要填写 connect_address"
@@ -517,7 +522,7 @@ func (c *groupConfig) validate() string {
 			return "connect_port 需在 1-65535 之间"
 		}
 	default:
-		return "connect_type 目前只支持 static（留空表示使用节点自己的地址）"
+		return "connect_type 可取 static、dyn_ip4、dyn_ip6（留空表示默认）"
 	}
 	return ""
 }

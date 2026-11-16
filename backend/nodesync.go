@@ -32,9 +32,10 @@ type syncReq struct {
 	// 节点是否开启了在线终端
 	Terminal bool `json:"terminal"`
 	// 出口节点自己指定的隧道端口和权重
-	TunnelPort int `json:"tunnel_port"`
-	Weight     int `json:"weight"`
-	RevPort    int `json:"rev_port"`
+	TunnelPort int    `json:"tunnel_port"`
+	Weight     int    `json:"weight"`
+	RevPort    int    `json:"rev_port"`
+	IPv6       string `json:"ipv6"`
 }
 
 type syncOut struct {
@@ -122,6 +123,10 @@ func handleNodeSync(c *gin.Context) {
 	node.Name, node.Version, node.Advertise = req.Name, req.Version, req.Advertise
 	node.IP, node.Conns, node.LastSeen = c.ClientIP(), req.Conns, time.Now()
 	node.TunnelPort, node.Weight, node.RevPort = req.TunnelPort, req.Weight, req.RevPort
+	node.IP6 = ""
+	if ip := net.ParseIP(req.IPv6); ip != nil && ip.To4() == nil {
+		node.IP6 = ip.String()
+	}
 	db.Save(&node)
 	setLive(node.ID, nodeLive{Status: req.Status, Terminal: req.Terminal})
 
@@ -153,9 +158,10 @@ func handleNodeSync(c *gin.Context) {
 		}
 		o, ok := outs[key]
 		if !ok {
-			o = outInfo(og)
+			v6 := g.Type == GroupIn && prefersV6(myCfg.IPv6Group, og.ID)
+			o = outInfo(og, v6)
 			if fb := group(og.FailoverGroupID); withFailover && fb != nil {
-				o.Fallback = outInfo(fb)
+				o.Fallback = outInfo(fb, g.Type == GroupIn && prefersV6(myCfg.IPv6Group, fb.ID))
 				o.Fallback.MaxFail, o.Fallback.FailTimeout = myCfg.MaxFail, myCfg.FailTimeoutSec
 			}
 			o.MaxFail, o.FailTimeout = myCfg.MaxFail, myCfg.FailTimeoutSec
@@ -278,9 +284,45 @@ func reverseTargets(outID uint) []string {
 	return out
 }
 
+// prefersV6 解读入口组的 ipv6_group：列表里有 0 表示"全部出口优先 IPv6，其余列出的例外"，
+// 否则表示"只有列出的出口优先 IPv6"。
+func prefersV6(list []uint, outID uint) bool {
+	if !containsID(list, 0) {
+		return containsID(list, outID)
+	}
+	for _, id := range list {
+		if id != 0 && id == outID {
+			return false
+		}
+	}
+	return true
+}
+
+// connectHost 决定入口连接某个出口节点时用哪个地址，优先级从高到低：
+//  1. 节点自己指定的连接地址（-advertise）
+//  2. 出口组 connect_type = dyn_ip4：IPv4
+//  3. 入口组的 ipv6_group 选中了这个出口组：IPv6，节点没有 IPv6 时回落到 IPv4
+//  4. 出口组 connect_type = dyn_ip6：IPv6，节点没有 IPv6 时不使用这个节点（不回落）
+//  5. 默认：面板看到的节点地址
+//
+// 返回空串表示这个节点不可用。
+func connectHost(n *Node, connectType string, preferV6 bool) string {
+	switch {
+	case n.Advertise != "":
+		return n.Advertise
+	case connectType == "dyn_ip4":
+		return n.IP
+	case preferV6 && n.IP6 != "":
+		return n.IP6
+	case connectType == "dyn_ip6":
+		return n.IP6
+	}
+	return n.IP
+}
+
 // outInfo 返回入口连接某个出口组所需的信息：协议、密钥，以及每个在线节点的地址和权重。
-// 出口组设置了 static 连接地址时，所有入口都固定连那个地址。
-func outInfo(g *DeviceGroup) *syncOut {
+// 出口组设置了 static 连接地址时，所有入口都固定连那个地址。preferV6 来自入口组的 ipv6_group。
+func outInfo(g *DeviceGroup, preferV6 bool) *syncOut {
 	cfg := g.cfg()
 	o := &syncOut{Proto: tunnelProto(g), Key: g.TunnelKey, Addrs: []string{}, Mux: cfg.Mux == nil || *cfg.Mux}
 	if cfg.WS != nil {
@@ -301,6 +343,10 @@ func outInfo(g *DeviceGroup) *syncOut {
 		if !n.online() {
 			continue
 		}
+		host := connectHost(n, cfg.ConnectType, preferV6)
+		if host == "" {
+			continue
+		}
 		port, weight := g.TunnelPort, 1
 		if n.TunnelPort > 0 {
 			port = n.TunnelPort
@@ -308,7 +354,7 @@ func outInfo(g *DeviceGroup) *syncOut {
 		if n.Weight > 0 {
 			weight = n.Weight
 		}
-		o.Addrs = append(o.Addrs, net.JoinHostPort(n.host(), strconv.Itoa(port)))
+		o.Addrs = append(o.Addrs, net.JoinHostPort(host, strconv.Itoa(port)))
 		o.Weights = append(o.Weights, weight)
 	}
 	return o

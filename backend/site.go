@@ -13,7 +13,7 @@ import (
 const panelVersion = "0.8.0"
 
 // nodeVersion 是内嵌的节点端安装包的版本，节点上报的版本与它不同时界面会提示升级。
-const nodeVersion = "0.7.0"
+const nodeVersion = "0.8.0"
 
 // ---------- KV：站点设置、支付通道、套餐、兑换码、推送设置 ----------
 //
@@ -157,6 +157,7 @@ func handleStatus(c *gin.Context) {
 		ID       uint            `json:"id"`
 		Name     string          `json:"name"`
 		IP       string          `json:"ip"`
+		IP6      string          `json:"ip6"`
 		Version  string          `json:"version"`
 		Conns    int             `json:"conns"`
 		Online   bool            `json:"online"`
@@ -184,7 +185,7 @@ func handleStatus(c *gin.Context) {
 				continue
 			}
 			lv := getLive(n.ID)
-			nr := nodeRow{ID: n.ID, Name: n.Name, IP: n.host(), Version: n.Version, Conns: n.Conns,
+			nr := nodeRow{ID: n.ID, Name: n.Name, IP: n.host(), IP6: n.IP6, Version: n.Version, Conns: n.Conns,
 				Online: n.online(), LastSeen: n.LastSeen, Status: lv.Status,
 				Terminal: u.Admin && lv.Terminal && nodeConnected(n.ID)}
 			if !nr.Online || len(nr.Status) == 0 {

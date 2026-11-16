@@ -324,6 +324,7 @@ export default function AdminDeviceGroups() {
               blocked_host / allowed_host: [".example.com"] — 域名黑名单 / 白名单（后缀匹配，二者不能同时用）<br />
               blocked_path: ["/admin"] — HTTP 路径黑名单（后缀匹配）<br />
               max_fail: 3, fail_timeout_sec: 30 — 出口连续失败几次后，多少秒内不再使用<br />
+              ipv6_group: [3] — 连接这些出口组时优先用 IPv6；[0] 表示全部优先，[0,1,2] 表示全部优先但 1、2 仍用 IPv4。出口没有 IPv6 时回落到 IPv4<br />
               reverse_group: [3] — 这些出口组走反向隧道（出口主动连入口），[0] 表示全部；入口节点启动时需加 -rev-port 端口<br />
               tls_inbound_policy: 0/1/2 — 1 只允许 TLS 入站规则；2 且只有管理员能监听端口（用户只能建子规则）<br />
               tls_reject_empty_sni: true/false — 拒绝不带 SNI 的 TLS 连接
@@ -335,6 +336,7 @@ export default function AdminDeviceGroups() {
               tunnel_port: 23456 — 隧道监听端口（需在防火墙放行）<br />
               mux: true/false — 连接复用<br />
               connect_type: "static", connect_address: "1.2.3.4", connect_port: 443 — 入口固定连这个地址（经 CDN、NAT 时用）<br />
+              connect_type: "dyn_ip4" / "dyn_ip6" — 强制用节点的 IPv4 / IPv6 连接。dyn_ip6 不回落：没有 IPv6 的出口节点不会被使用<br />
               ws: {'{'}"host": "your.domain.com", "path": "/"{'}'} — ws 协议的 Host 头和路径
             </>
           )}

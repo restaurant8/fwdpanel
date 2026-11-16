@@ -181,6 +181,7 @@ export interface StatusNode {
   id: number
   name: string
   ip: string
+  ip6: string
   version: string
   conns: number
   online: boolean
