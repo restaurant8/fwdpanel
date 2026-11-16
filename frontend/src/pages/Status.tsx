@@ -15,9 +15,9 @@ const chip = { background: '#e8def8', borderRadius: 8, padding: '8px 22px', font
 function Bar({ pct, color }: { pct: number; color: string }) {
   const p = Math.max(0, Math.min(100, pct))
   return (
-    <div style={{ position: 'relative', height: 30, minWidth: 112, background: '#d9d4dc', borderRadius: 6, overflow: 'hidden', border: '1px solid #cac4d0' }}>
-      <div style={{ width: `${Math.max(p, 6)}%`, height: '100%', background: color, borderRadius: 6 }} />
-      <span style={{ position: 'absolute', left: 10, top: 4, color: '#fff', fontWeight: 700, textShadow: '0 0 2px rgba(0,0,0,.35)' }}>{p.toFixed(1)}%</span>
+    <div className="probe-meter">
+      <div style={{ width: `${p}%`, height: '100%', background: color }} />
+      <span>{p.toFixed(1)}%</span>
     </div>
   )
 }
@@ -79,16 +79,14 @@ export default function Status() {
   const admin = user.admin && !asUser
   const iconBtn = (title: string, icon: React.ReactNode, onClick: () => void) => (
     <Tooltip title={title}>
-      <span onClick={onClick} style={{ display: 'inline-grid', placeItems: 'center', width: 38, height: 32, border: '1px solid #cac4d0', borderRadius: 8, cursor: 'pointer', marginRight: 14, fontSize: 16 }}>
-        {icon}
-      </span>
+      <Button className="probe-icon-button" size="small" aria-label={title} icon={icon} onClick={onClick} />
     </Tooltip>
   )
   const th = { padding: '6px 10px', fontWeight: 700 as const, textAlign: 'center' as const, whiteSpace: 'nowrap' as const }
   const td = { padding: '10px', textAlign: 'center' as const, whiteSpace: 'nowrap' as const, borderTop: '1px solid #49454f' }
 
   return (
-    <div style={{ minHeight: '100vh', color: '#1d1b20', fontSize: 14 }}>
+    <div className="probe-page" style={{ minHeight: '100vh', color: '#1d1b20', fontSize: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 20px', fontWeight: 500 }}>
         <a href="#/" style={{ color: 'inherit', flex: 1 }}><HomeOutlined style={{ fontSize: 18, marginRight: 10 }} />主页</a>
         <span style={{ cursor: 'pointer', marginRight: 28 }} onClick={openApi}>
@@ -108,19 +106,20 @@ export default function Status() {
           const rx = on.reduce((s, n) => s + n.status!.net_rx, 0)
           return (
             <div key={g.id} style={{ marginBottom: 28 }}>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '12px 0' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', margin: '12px 0' }}>
                 <span style={{ border: `1px solid ${purple}`, color: purple, borderRadius: 20, padding: '8px 24px', fontWeight: 500 }}>{g.name} | ID: {g.id}</span>
                 <span style={chip}>
                   <UploadOutlined /> {fmtRate(tx)} <DownloadOutlined style={{ marginLeft: 36 }} /> {fmtRate(rx)}
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <table className="probe-table">
                   <thead>
                     <tr>
-                      {['状态', '名称', admin ? '出口 IP' : '', '速率', '开机时长', '流量', 'CPU', 'RAM', '存储', admin ? '操作' : ''].filter(Boolean).map((h) => (
+                      {['状态', '名称', admin ? '出口 IP' : '', '速率', '开机时长', '流量', 'CPU', 'RAM', '存储'].filter(Boolean).map((h) => (
                         <th key={h} style={th}>{h}</th>
                       ))}
+                      {admin && <th className="probe-action-cell" style={th}>操作</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -136,8 +135,8 @@ export default function Status() {
                             </Tooltip>
                           </td>
                           <td style={td}>
-                            <span style={{ ...chip, padding: '6px 14px' }}>{n.name}</span>
-                            {n.note && <div style={{ marginTop: 8, fontSize: 12, color: '#79747e', whiteSpace: 'normal', maxWidth: 220 }}>{n.note}</div>}
+                            <span className="probe-node-name" tabIndex={0} title={n.name}>{n.name}</span>
+                            {n.note && <div className="probe-node-note">{n.note}</div>}
                           </td>
                           {admin && <td style={td}>{n.ip}{n.ip6 && <><br />{n.ip6}</>}</td>}
                           <td style={td}>
@@ -151,27 +150,29 @@ export default function Status() {
                           <td style={td}>{s ? <Bar pct={pct(s.mem_used, s.mem_total)} color={purple} /> : '-'}</td>
                           <td style={td}>{s ? <Bar pct={pct(s.disk_used, s.disk_total)} color={purple} /> : '-'}</td>
                           {admin && (
-                            <td style={{ ...td, textAlign: 'left' }}>
-                              {n.online && site.node_version && n.version !== site.node_version &&
-                                iconBtn(`升级到 ${site.node_version}（当前 ${n.version}）`, <ArrowUpOutlined style={{ color: '#e91e63' }} />, () =>
-                                  api('POST', `/admin/nodes/${n.id}/upgrade`).then(
-                                    () => message.success('已下发升级，节点会自动下载并重启'),
-                                    (e) => message.error(String(e.message || e)),
-                                  ),
+                            <td className="probe-action-cell" style={{ ...td, padding: '6px 8px' }}>
+                              <div className="probe-actions">
+                                {n.online && site.node_version && n.version !== site.node_version &&
+                                  iconBtn(`升级到 ${site.node_version}（当前 ${n.version}）`, <ArrowUpOutlined style={{ color: '#e91e63' }} />, () =>
+                                    api('POST', `/admin/nodes/${n.id}/upgrade`).then(
+                                      () => message.success('已下发升级，节点会自动下载并重启'),
+                                      (e) => message.error(String(e.message || e)),
+                                    ),
+                                  )}
+                                {g.type === 'out' && iconBtn(`出口权重（当前 ${n.weight}）`, <ControlOutlined />, () => {
+                                  setWeight(n.weight)
+                                  setWeightOf(n)
+                                })}
+                                {iconBtn('备注', <EditOutlined />, () => {
+                                  setNote(n.note)
+                                  setNoteOf(n)
+                                })}
+                                {n.terminal && iconBtn('在线终端', <CodeOutlined />, () => setTerm(n))}
+                                {iconBtn('详情', <InfoCircleOutlined />, () => setDetail(detail?.id === n.id ? null : n))}
+                                {!n.online && (
+                                  <Button className="probe-delete-button" size="small" danger icon={<DeleteOutlined />} onClick={() => confirmDelete(n)}>删除</Button>
                                 )}
-                              {g.type === 'out' && iconBtn(`出口权重（当前 ${n.weight}）`, <ControlOutlined />, () => {
-                                setWeight(n.weight)
-                                setWeightOf(n)
-                              })}
-                              {iconBtn('备注', <EditOutlined />, () => {
-                                setNote(n.note)
-                                setNoteOf(n)
-                              })}
-                              {n.terminal && iconBtn('在线终端', <CodeOutlined />, () => setTerm(n))}
-                              {iconBtn('详情', <InfoCircleOutlined />, () => setDetail(detail?.id === n.id ? null : n))}
-                              {!n.online && (
-                                <Button danger icon={<DeleteOutlined />} onClick={() => confirmDelete(n)}>删除</Button>
-                              )}
+                              </div>
                             </td>
                           )}
                         </tr>

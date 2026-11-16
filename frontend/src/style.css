@@ -52,3 +52,94 @@ body.dark {
   padding-left: 8px;
   margin: 8px 0 16px;
 }
+
+/* 探针表格 */
+.probe-page {
+  --probe-name-width: clamp(84px, 17vw, 180px);
+  --probe-surface: #fef7ff;
+}
+
+.probe-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.probe-node-name {
+  display: inline-block;
+  max-width: var(--probe-name-width);
+  padding: 6px 10px;
+  box-sizing: border-box;
+  background: #e8def8;
+  border-radius: 8px;
+  font-weight: 500;
+  vertical-align: middle;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.probe-node-note {
+  max-width: var(--probe-name-width);
+  margin: 8px auto 0;
+  color: #79747e;
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.probe-meter {
+  position: relative;
+  width: clamp(52px, 6vw, 80px);
+  height: 24px;
+  margin-inline: auto;
+  overflow: hidden;
+  background: #d9d4dc;
+  border: 1px solid #cac4d0;
+  border-radius: 6px;
+}
+
+.probe-meter > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #302936, 0 0 3px #302936;
+}
+
+.probe-action-cell {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  width: 1%;
+  background: var(--probe-surface);
+  box-shadow: -1px 0 #cac4d0;
+}
+
+.probe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  width: max-content;
+  margin-inline-start: auto;
+}
+
+.probe-actions .probe-icon-button {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+.probe-actions .probe-delete-button {
+  height: 32px;
+}
+
+@media (max-width: 700px) {
+  .probe-actions {
+    max-width: 104px;
+  }
+}
