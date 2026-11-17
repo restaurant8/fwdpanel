@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { App as AntApp, ConfigProvider, Dropdown, Layout, Menu, Spin, theme } from 'antd'
+import { App as AntApp, ConfigProvider, Drawer, Dropdown, Grid, Layout, Menu, Spin, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
-  AccountBookOutlined, ApiOutlined, CloudServerOutlined, DashboardOutlined, HomeOutlined, LogoutOutlined, MoonFilled,
+  AccountBookOutlined, ApiOutlined, CloudServerOutlined, DashboardOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MoonFilled,
   NotificationOutlined, SettingOutlined, ShoppingOutlined, SunFilled, TagOutlined, TeamOutlined, TransactionOutlined,
   UnorderedListOutlined, UserOutlined,
 } from '@ant-design/icons'
@@ -100,6 +100,10 @@ function Shell(props: { dark: boolean; setDark: (d: boolean) => void; onLogout: 
   const { token } = theme.useToken()
   const loc = useLocation()
   const nav = useNavigate()
+  // 窄屏（手机）不放侧栏，改成顶栏左边的菜单按钮 + 抽屉
+  const wide = Grid.useBreakpoint().md !== false
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => setMenuOpen(false), [loc.pathname])
 
   const item = (key: string, icon: React.ReactNode, label: string) => ({ key, icon, label: <Link to={key}>{label}</Link> })
   const items: any[] = [
@@ -132,6 +136,17 @@ function Shell(props: { dark: boolean; setDark: (d: boolean) => void; onLogout: 
       ],
     })
 
+  const menu = (
+    <Menu
+      mode="inline"
+      selectedKeys={[loc.pathname]}
+      defaultOpenKeys={['admin']}
+      items={items}
+      onClick={() => setMenuOpen(false)}
+      style={{ borderInlineEnd: 0, minHeight: wide ? 'calc(100vh - 92px)' : undefined }}
+    />
+  )
+
   const logout = async () => {
     await api('POST', '/auth/logout').catch(() => {})
     setToken(null)
@@ -144,14 +159,19 @@ function Shell(props: { dark: boolean; setDark: (d: boolean) => void; onLogout: 
       <Layout.Header
         style={{
           background: props.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.3)',
-          padding: '0 28px',
+          padding: wide ? '0 28px' : '0 14px',
           height: 64,
           display: 'flex',
           alignItems: 'center',
           gap: 14,
         }}
       >
-        <h2 style={{ flex: 1, margin: 0, fontSize: 21, fontWeight: 700, color: token.colorText }}>{site.title}</h2>
+        {!wide && (
+          <MenuOutlined aria-label="菜单" style={{ fontSize: 20, cursor: 'pointer', color: token.colorText, padding: 6 }} onClick={() => setMenuOpen(true)} />
+        )}
+        <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: wide ? 21 : 18, fontWeight: 700, color: token.colorText, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {site.title}
+        </h2>
         <Dropdown.Button
           style={{ width: 'auto' }}
           icon={<UserOutlined />}
@@ -164,17 +184,17 @@ function Shell(props: { dark: boolean; setDark: (d: boolean) => void; onLogout: 
           {props.dark ? <SunFilled /> : <MoonFilled />}
         </span>
       </Layout.Header>
-      <Layout hasSider style={{ padding: 14, gap: 14, background: 'transparent', alignItems: 'flex-start' }}>
-        <Layout.Sider width={200} breakpoint="md" collapsedWidth={0} style={{ background: token.colorBgContainer }} trigger={null}>
-          <Menu
-            mode="inline"
-            selectedKeys={[loc.pathname]}
-            defaultOpenKeys={['admin']}
-            items={items}
-            style={{ borderInlineEnd: 0, minHeight: 'calc(100vh - 92px)' }}
-          />
-        </Layout.Sider>
-        <Layout.Content style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Layout hasSider={wide} style={{ padding: wide ? 14 : 10, gap: 14, background: 'transparent', alignItems: 'flex-start' }}>
+        {wide ? (
+          <Layout.Sider width={200} style={{ background: token.colorBgContainer }} trigger={null}>
+            {menu}
+          </Layout.Sider>
+        ) : (
+          <Drawer placement="left" width={240} open={menuOpen} onClose={() => setMenuOpen(false)} title={site.title} styles={{ body: { padding: 0 } }}>
+            {menu}
+          </Drawer>
+        )}
+        <Layout.Content style={{ minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/userinfo" element={<UserInfo />} />

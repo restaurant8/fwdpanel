@@ -42,6 +42,30 @@ function GroupLabel({ g }: { g: Group }) {
   )
 }
 
+// 规则列表每页条数记在本浏览器里，下次打开沿用
+const PAGE_SIZE_KEY = 'rules_page_size'
+const loadPageSize = () => {
+  try {
+    const n = Number(localStorage.getItem(PAGE_SIZE_KEY))
+    return n > 0 ? n : 20
+  } catch {
+    return 20
+  }
+}
+
+// 批量切换：留空的项不更新
+interface SwitchForm {
+  in_group_id?: number
+  out_group_id?: number
+  lb?: string
+  accept_pp?: boolean
+  send_pp?: number
+  speed_mbps?: number | null
+  ip_limit?: number | null
+  conn_limit?: number | null
+  group_id?: number
+}
+
 // ofUser: 管理员查看某个用户的规则；all: 管理员跨用户搜索全部规则
 export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; username: string }; all?: boolean; onBack?: () => void }) {
   const { user, reload: reloadUser } = useAuth()
@@ -54,6 +78,8 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
   const [searchOpen, setSearchOpen] = useState(!!all) // 跨用户搜索时一进来就弹出搜索框
   const [filter, setFilter] = useState<number | 'all'>('all') // 规则分组筛选，0 = 未分组
   const [selected, setSelected] = useState<number[]>([])
+  const [pageSize, setPageSize] = useState(loadPageSize)
+  const [page, setPage] = useState(1)
 
   const [draft, setDraft] = useState<Draft | null>(null)
   const [tls, setTls] = useState<RuleTLS | null>(null) // 正在编辑的 TLS 入站设置
@@ -61,7 +87,7 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
   const [imp, setImp] = useState<{ in_group_id?: number; out_group_id: number; lines: string }>({ out_group_id: 0, lines: '' })
   const [importErrors, setImportErrors] = useState<string[]>([])
   const [exportText, setExportText] = useState<string | null>(null)
-  const [sw, setSw] = useState<{ action: string; value?: number } | null>(null)
+  const [sw, setSw] = useState<SwitchForm | null>(null)
   const [groupsOpen, setGroupsOpen] = useState(false)
   const [newGroup, setNewGroup] = useState('')
   const [statsOpen, setStatsOpen] = useState(false)
@@ -114,6 +140,8 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
         .some((x) => x && x.toLowerCase().includes(kw))
     })
   }, [rules, filter, search, groupById])
+
+  useEffect(() => setPage(1), [filter, search])
 
   const inOpts = groups.filter((g) => g.type === 'in').map((g) => ({ value: g.id, label: <GroupLabel g={g} /> }))
 
@@ -262,10 +290,32 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
     }
   }
 
+  // 只把填了的项发给后端，留空的项保持每条规则原来的设置
   const runSwitch = async () => {
     if (!sw) return
-    if (['set_in', 'set_out', 'set_group'].includes(sw.action) && sw.value === undefined) return message.error('请选择')
-    if (await batch(sw.action, sw.value ?? 0)) setSw(null)
+    const fields: Record<string, unknown> = {}
+    if (sw.in_group_id !== undefined) fields.in_group_id = sw.in_group_id
+    if (sw.out_group_id !== undefined) fields.out_group_id = sw.out_group_id
+    if (sw.lb !== undefined) fields.lb = sw.lb
+    if (sw.accept_pp !== undefined) fields.accept_pp = sw.accept_pp
+    if (sw.send_pp !== undefined) fields.send_pp = sw.send_pp
+    if (sw.speed_mbps != null) fields.speed_limit = Math.round(sw.speed_mbps * MBPS)
+    if (sw.ip_limit != null) fields.ip_limit = sw.ip_limit
+    if (sw.conn_limit != null) fields.conn_limit = sw.conn_limit
+    if (sw.group_id !== undefined) fields.group_id = sw.group_id
+    if (!Object.keys(fields).length) return message.info('没有填写要更改的项')
+    try {
+      const res = await api<BatchResult>('POST', '/rules/batch_action', { ids: selected, action: 'update', fields })
+      if (res.errors.length) showErrors(`${res.done} 条成功，${res.errors.length} 条失败`, res.errors)
+      else message.success(`已更新 ${res.done} 条规则`)
+      setSw(null)
+      load()
+    } catch (e) {
+      message.error(errMsg(e))
+    }
+  }
+  const pauseSelected = async (action: 'pause' | 'resume') => {
+    if (await batch(action)) setSw(null)
   }
 
   const groupAct = async (fn: () => Promise<unknown>) => {
@@ -361,7 +411,7 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
   const float = (icon: React.ReactNode, description: string, onClick: () => void) => (
     <FloatButton icon={icon} description={description} onClick={onClick} />
   )
-  const openSwitch = () => !need() && setSw({ action: 'pause' })
+  const openSwitch = () => !need() && setSw({})
 
   return (
     <Card
@@ -416,7 +466,24 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
         loading={loading}
         scroll={{ x: 'max-content' }}
         rowSelection={{ selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) }}
-        pagination={{ showSizeChanger: true, defaultPageSize: 20, hideOnSinglePage: true }}
+        pagination={{
+          showSizeChanger: true,
+          pageSizeOptions: [10, 20, 50, 100, 200],
+          current: page,
+          pageSize,
+          // 条数在 10 条以内也显示分页条，否则选了 10 条/页之后就没法再改回来
+          hideOnSinglePage: false,
+          showTotal: (t) => `共 ${t} 条`,
+          onChange: (p, size) => {
+            if (size !== pageSize) {
+              setPageSize(size)
+              setPage(1)
+              try {
+                localStorage.setItem(PAGE_SIZE_KEY, String(size))
+              } catch {}
+            } else setPage(p)
+          },
+        }}
       />
 
       {!adminView && (
@@ -675,28 +742,79 @@ export default function Rules({ ofUser, all, onBack }: { ofUser?: { id: number; 
         <Input.TextArea rows={14} readOnly value={exportText ?? ''} style={{ fontFamily: 'monospace' }} />
       </Modal>
 
-      <Modal title={`批量切换（${selected.length} 条规则）`} open={!!sw} onOk={runSwitch} onCancel={() => setSw(null)} width={416} className="tight-form" destroyOnClose>
+      <Modal
+        title={`批量切换（${selected.length} 条规则）`}
+        open={!!sw}
+        onCancel={() => setSw(null)}
+        width={416}
+        className="tight-form"
+        destroyOnClose
+        footer={
+          <>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <Button icon={<PauseCircleOutlined />} onClick={() => pauseSelected('pause')}>批量暂停选中规则</Button>
+              <Button icon={<PlayCircleOutlined />} onClick={() => pauseSelected('resume')}>批量恢复选中规则</Button>
+            </div>
+            <Space>
+              <Button onClick={() => setSw(null)}>取 消</Button>
+              <Button type="primary" onClick={runSwitch}>确 定</Button>
+            </Space>
+          </>
+        }
+      >
         {sw && (
           <>
-            <Field label="操作">
+            <Typography.Paragraph style={{ fontWeight: 600 }}>批量更改可能需要等待一段时间才能生效。</Typography.Paragraph>
+            <Field label="入口 (留空不更新)">
               <Select
-                style={{ width: '100%' }} value={sw.action} onChange={(v) => setSw({ action: v })}
-                options={[
-                  { value: 'pause', label: '暂停' }, { value: 'resume', label: '启动' },
-                  { value: 'set_in', label: '切换入口' }, { value: 'set_out', label: '切换出口' },
-                  { value: 'set_group', label: '移动到分组' },
-                ]}
+                allowClear style={{ width: '100%' }} options={inOpts} value={sw.in_group_id}
+                onChange={(v) => setSw({ ...sw, in_group_id: v, out_group_id: v !== undefined && sw.out_group_id !== undefined && !outOptsFor(v).some((o) => o.value === sw.out_group_id) ? undefined : sw.out_group_id })}
               />
             </Field>
-            {sw.action === 'set_in' && (
-              <Field label="入口"><Select style={{ width: '100%' }} options={inOpts} value={sw.value} onChange={(v) => setSw({ ...sw, value: v })} /></Field>
-            )}
-            {sw.action === 'set_out' && (
-              <Field label="出口"><Select style={{ width: '100%' }} options={outOptsFor(undefined)} value={sw.value} onChange={(v) => setSw({ ...sw, value: v })} /></Field>
-            )}
-            {sw.action === 'set_group' && (
-              <Field label="分组"><Select style={{ width: '100%' }} options={ruleGroupOpts} value={sw.value} onChange={(v) => setSw({ ...sw, value: v })} /></Field>
-            )}
+            <Field label="出口 (留空不更新)">
+              <Select allowClear style={{ width: '100%' }} options={outOptsFor(sw.in_group_id)} value={sw.out_group_id} onChange={(v) => setSw({ ...sw, out_group_id: v })} />
+            </Field>
+            <Collapse
+              defaultActiveKey={['adv']}
+              items={[
+                {
+                  key: 'adv',
+                  label: '高级选项 (留空不更新)',
+                  children: (
+                    <>
+                      <Field label="负载均衡策略">
+                        <Select allowClear style={{ width: '100%' }} options={lbOpts} value={sw.lb} onChange={(v) => setSw({ ...sw, lb: v })} />
+                      </Field>
+                      <Field label="接受 Proxy Protocol" tip="入口前面还有一层会发送 Proxy Protocol 头的代理时开启（v1/v2 自动识别）。开启后，不带这个头的连接会被拒绝。仅对 TCP 生效。">
+                        <Select
+                          allowClear style={{ width: '100%' }} value={sw.accept_pp === undefined ? undefined : sw.accept_pp ? 1 : 0}
+                          onChange={(v) => setSw({ ...sw, accept_pp: v === undefined ? undefined : v === 1 })}
+                          options={[{ value: 0, label: '关闭' }, { value: 1, label: '开启' }]}
+                        />
+                      </Field>
+                      <Field label="发送 Proxy Protocol" tip="连接目标时先发送 Proxy Protocol 头，把客户端真实 IP 告诉目标。目标必须开启了对应版本的 Proxy Protocol。仅对 TCP 生效。">
+                        <Select
+                          allowClear style={{ width: '100%' }} value={sw.send_pp} onChange={(v) => setSw({ ...sw, send_pp: v })}
+                          options={[{ value: 0, label: '关闭' }, { value: 1, label: 'v1' }, { value: 2, label: 'v2' }]}
+                        />
+                      </Field>
+                      <Field label="规则限速" tip="0 表示不限。与用户限速叠加，每个入口单独计算。">
+                        <InputNumber min={0} addonAfter="Mbps" style={{ width: '100%' }} value={sw.speed_mbps} onChange={(v) => setSw({ ...sw, speed_mbps: v })} />
+                      </Field>
+                      <Field label="IP 限制" tip="本规则同时在线的来源 IP 数，0 表示不限。">
+                        <InputNumber min={0} precision={0} style={{ width: '100%' }} value={sw.ip_limit} onChange={(v) => setSw({ ...sw, ip_limit: v })} />
+                      </Field>
+                      <Field label="连接数限制" tip="本规则的并发连接数，0 表示不限。">
+                        <InputNumber min={0} precision={0} style={{ width: '100%' }} value={sw.conn_limit} onChange={(v) => setSw({ ...sw, conn_limit: v })} />
+                      </Field>
+                      <Field label="分组">
+                        <Select allowClear style={{ width: '100%' }} options={ruleGroupOpts} value={sw.group_id} onChange={(v) => setSw({ ...sw, group_id: v })} />
+                      </Field>
+                    </>
+                  ),
+                },
+              ]}
+            />
           </>
         )}
       </Modal>

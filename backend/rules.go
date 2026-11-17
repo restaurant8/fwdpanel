@@ -433,6 +433,18 @@ func handleBatchAction(c *gin.Context) {
 		IDs    []uint `json:"ids"`
 		Action string `json:"action"`
 		Value  uint   `json:"value"`
+		// action = update 时使用：只更新出现的字段，没出现的保持每条规则原来的设置
+		Fields struct {
+			InGroupID  *uint   `json:"in_group_id"`
+			OutGroupID *uint   `json:"out_group_id"`
+			LB         *string `json:"lb"`
+			AcceptPP   *bool   `json:"accept_pp"`
+			SendPP     *int    `json:"send_pp"`
+			SpeedLimit *int64  `json:"speed_limit"`
+			IPLimit    *int    `json:"ip_limit"`
+			ConnLimit  *int    `json:"conn_limit"`
+			GroupID    *uint   `json:"group_id"`
+		} `json:"fields"`
 	}
 	if c.ShouldBindJSON(&req) != nil || len(req.IDs) == 0 || len(req.IDs) > 1000 {
 		fail(c, 400, "请求格式错误")
@@ -470,6 +482,36 @@ func handleBatchAction(c *gin.Context) {
 			rr.OutGroupID = req.Value
 		case "set_group":
 			rr.GroupID = req.Value
+		case "update":
+			f := req.Fields
+			if f.InGroupID != nil {
+				rr.InGroupID = *f.InGroupID
+				// 换了入口组、端口在新入口组里可能已被占用：交给 applyRuleReq 检查
+			}
+			if f.OutGroupID != nil {
+				rr.OutGroupID = *f.OutGroupID
+			}
+			if f.LB != nil {
+				rr.LB = *f.LB
+			}
+			if f.AcceptPP != nil {
+				rr.AcceptPP = *f.AcceptPP
+			}
+			if f.SendPP != nil {
+				rr.SendPP = *f.SendPP
+			}
+			if f.SpeedLimit != nil {
+				rr.SpeedLimit = *f.SpeedLimit
+			}
+			if f.IPLimit != nil {
+				rr.IPLimit = *f.IPLimit
+			}
+			if f.ConnLimit != nil {
+				rr.ConnLimit = *f.ConnLimit
+			}
+			if f.GroupID != nil {
+				rr.GroupID = *f.GroupID
+			}
 		default:
 			fail(c, 400, "不支持的操作")
 			return
